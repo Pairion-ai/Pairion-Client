@@ -9,9 +9,11 @@
 //! - First audio byte receive → playback: < 80ms
 
 pub mod capture;
+pub mod codec;
 pub mod playback;
 
 pub use capture::{AudioCaptureManager, CaptureError, PreWakeBuffer, PRE_WAKE_BUFFER_SAMPLES};
+pub use codec::{OpusCodecError, PairionOpusDecoder, PairionOpusEncoder};
 pub use playback::{AudioPlaybackManager, PlaybackError};
 
 /// Audio capture configuration.

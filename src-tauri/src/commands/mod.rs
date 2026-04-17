@@ -145,13 +145,8 @@ pub fn request_screen_capture(_session_id: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::AppState;
-
-    fn make_test_state() -> AppState {
-        AppState::new(
-            "test-device-001".to_string(),
-            "ws://localhost:18789/ws/v1".to_string(),
-        )
+    fn make_test_state() -> crate::state::AppState {
+        crate::state::test_app_state("test-device-001", "ws://localhost:18789/ws/v1")
     }
 
     #[test]

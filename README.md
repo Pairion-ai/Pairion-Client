@@ -20,6 +20,8 @@ See the [Pairion Charter](https://github.com/your-org/Pairion-Server/blob/main/P
 - **Node.js 24** (via [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm))
 - **pnpm** (`npm install -g pnpm`)
 - **Tauri CLI** (`cargo install tauri-cli --version "^2"`)
+- **libopus** (`brew install opus`) — required for Opus audio encoding/decoding
+- **pkg-config** (`brew install pkg-config`) — required to locate libopus
 
 ### Install & Run
 

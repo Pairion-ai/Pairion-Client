@@ -4,6 +4,7 @@
 //! via [`tokio::sync::watch`] channels. The WebSocket client updates
 //! these; Tauri commands read them to serve React frontend queries.
 
+use crate::ws::OutboundSender;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -127,11 +128,14 @@ pub struct AppState {
     pub session_tx: Arc<watch::Sender<SessionState>>,
     /// Receiver half of the session state watch channel.
     pub session_rx: watch::Receiver<SessionState>,
+    /// Sender for outbound WebSocket messages (shared with audio pipeline and commands).
+    pub outbound_tx: OutboundSender,
 }
 
 impl AppState {
-    /// Creates a new application state with the given device id and server URL.
-    pub fn new(device_id: String, server_url: String) -> Self {
+    /// Creates a new application state with the given device id, server URL,
+    /// and outbound WebSocket message sender.
+    pub fn new(device_id: String, server_url: String, outbound_tx: OutboundSender) -> Self {
         let (conn_tx, conn_rx) = watch::channel(ConnectionState::default());
         let (sess_tx, sess_rx) = watch::channel(SessionState::default());
         Self {
@@ -141,8 +145,17 @@ impl AppState {
             server_url,
             session_tx: Arc::new(sess_tx),
             session_rx: sess_rx,
+            outbound_tx,
         }
     }
+}
+
+/// Creates a test AppState with a dummy outbound sender.
+/// Only available in test builds.
+#[cfg(test)]
+pub fn test_app_state(device_id: &str, server_url: &str) -> AppState {
+    let (tx, _rx) = crate::ws::create_outbound_channel();
+    AppState::new(device_id.to_string(), server_url.to_string(), tx)
 }
 
 #[cfg(test)]
@@ -192,10 +205,7 @@ mod tests {
 
     #[test]
     fn test_app_state_creation() {
-        let state = AppState::new(
-            "dev-001".to_string(),
-            "ws://localhost:18789/ws/v1".to_string(),
-        );
+        let state = test_app_state("dev-001", "ws://localhost:18789/ws/v1");
         assert_eq!(state.device_id, "dev-001");
         assert_eq!(state.server_url, "ws://localhost:18789/ws/v1");
         assert_eq!(*state.connection_rx.borrow(), ConnectionState::Connecting);
@@ -238,10 +248,7 @@ mod tests {
 
     #[test]
     fn test_session_state_watch_channel() {
-        let state = AppState::new(
-            "dev-001".to_string(),
-            "ws://localhost:18789/ws/v1".to_string(),
-        );
+        let state = test_app_state("dev-001", "ws://localhost:18789/ws/v1");
         let new_session = SessionState {
             session_id: Some("sess-1".to_string()),
             agent_state: AgentState::Listening,
@@ -254,10 +261,7 @@ mod tests {
 
     #[test]
     fn test_app_state_update() {
-        let state = AppState::new(
-            "dev-001".to_string(),
-            "ws://localhost:18789/ws/v1".to_string(),
-        );
+        let state = test_app_state("dev-001", "ws://localhost:18789/ws/v1");
         let _ = state.connection_tx.send(ConnectionState::Connected {
             latency_ms: Some(10.0),
         });

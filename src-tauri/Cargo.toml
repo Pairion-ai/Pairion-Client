@@ -35,7 +35,12 @@ thiserror = "2"
 cpal = "0.15"
 ringbuf = "0.4"
 rubato = "0.16"
-# M1: WebSocket binary frames
+audiopus = "0.3.0-rc.0"
+# M1: ONNX Runtime for wake-word and VAD
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+ndarray = "0.16"
+sha2 = "0.10"
+# M1: WebSocket binary frames + outbound channel
 bytes = "1"
 
 [dev-dependencies]

@@ -33,7 +33,10 @@ pub fn run() {
 
     let device_id = load_or_generate_device_id();
     let app_config = AppConfig::default();
-    let app_state = AppState::new(device_id.clone(), app_config.ws_url.clone());
+    // Create the outbound WS message channel
+    let (outbound_tx, outbound_rx) = ws::create_outbound_channel();
+
+    let app_state = AppState::new(device_id.clone(), app_config.ws_url.clone(), outbound_tx);
     let connection_tx = app_state.connection_tx.clone();
     let session_tx = app_state.session_tx.clone();
 
@@ -66,7 +69,7 @@ pub fn run() {
 
             // Spawn the WebSocket client on the Tokio runtime
             tauri::async_runtime::spawn(async move {
-                ws::run_ws_client(config, dev_id, tok, conn_tx, sess_tx).await;
+                ws::run_ws_client(config, dev_id, tok, conn_tx, sess_tx, outbound_rx).await;
             });
 
             Ok(())

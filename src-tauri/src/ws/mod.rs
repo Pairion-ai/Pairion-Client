@@ -8,8 +8,10 @@
 //! Connection state is exposed via a [`tokio::sync::watch`] channel that
 //! the Tauri command layer bridges to the React frontend.
 
+pub mod channel;
 mod messages;
 
+pub use channel::{create_outbound_channel, OutboundMessage, OutboundReceiver, OutboundSender};
 pub use messages::*;
 
 use crate::config::AppConfig;
@@ -26,12 +28,15 @@ use tracing::{debug, error, info, warn};
 /// This function runs indefinitely, reconnecting on failure with exponential
 /// backoff. It updates both connection and session state via the provided
 /// watch channel senders. The `token` is used for authentication in `DeviceIdentify`.
+/// The `outbound_rx` receives messages from other tasks (audio capture,
+/// Tauri commands) for sending over the WebSocket.
 pub async fn run_ws_client(
     config: AppConfig,
     device_id: String,
     token: String,
     connection_tx: Arc<watch::Sender<ConnectionState>>,
     session_tx: Arc<watch::Sender<SessionState>>,
+    mut outbound_rx: OutboundReceiver,
 ) {
     let mut attempt: u32 = 0;
 
@@ -42,7 +47,16 @@ pub async fn run_ws_client(
             ConnectionState::Reconnecting { attempt }
         });
 
-        match connect_and_run(&config, &device_id, &token, &connection_tx, &session_tx).await {
+        match connect_and_run(
+            &config,
+            &device_id,
+            &token,
+            &connection_tx,
+            &session_tx,
+            &mut outbound_rx,
+        )
+        .await
+        {
             Ok(()) => {
                 info!("WebSocket connection closed normally");
             }
@@ -77,6 +91,7 @@ async fn connect_and_run(
     token: &str,
     connection_tx: &Arc<watch::Sender<ConnectionState>>,
     session_tx: &Arc<watch::Sender<SessionState>>,
+    outbound_rx: &mut OutboundReceiver,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (ws_stream, _) = tokio_tungstenite::connect_async(&config.ws_url).await?;
     let (mut write, mut read) = ws_stream.split();
@@ -161,6 +176,22 @@ async fn connect_and_run(
                         return Ok(());
                     }
                     _ => {} // Ping, Pong frames handled by tungstenite
+                }
+            }
+            outbound = outbound_rx.recv() => {
+                match outbound {
+                    Some(OutboundMessage::Json(text)) => {
+                        debug!("Sending outbound JSON message");
+                        write.send(Message::Text(text.into())).await?;
+                    }
+                    Some(OutboundMessage::Binary(data)) => {
+                        debug!(bytes = data.len(), "Sending outbound binary frame");
+                        write.send(Message::Binary(data.into())).await?;
+                    }
+                    None => {
+                        // Channel closed — all senders dropped
+                        warn!("Outbound channel closed");
+                    }
                 }
             }
         }

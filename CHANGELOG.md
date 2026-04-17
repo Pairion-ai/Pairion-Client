@@ -4,6 +4,22 @@ All notable changes to Pairion Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - 2026-04-17
+
+### Added
+
+- Opus codec integration via `audiopus` crate (encode 16kHz mono, decode configurable rate)
+- PairionOpusEncoder: 20ms frames, VBR, for AudioChunkIn binary WS frames
+- PairionOpusDecoder: accepts AudioChunkOut binary WS frames, outputs PCM
+- Encode/decode round-trip unit tests verifying lossy fidelity
+- Outbound WebSocket message channel (mpsc): enables Tauri commands and audio pipeline to send messages to Server
+- OutboundSender/OutboundReceiver with backpressure support (bounded channel, 256 capacity)
+- WS client consumes outbound channel alongside heartbeats and inbound messages
+- AppState now holds OutboundSender for shared access across commands
+- ONNX Runtime (`ort`) dependency added for future wake-word and VAD model loading
+- Demo pending stub at docs/demos/DEMO_PENDING.md
+- README updated with `brew install opus` and `brew install pkg-config` prerequisites
+
 ## [0.2.0] - 2026-04-17
 
 ### Added
