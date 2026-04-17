@@ -23,7 +23,7 @@ When documents conflict, later beats earlier in this order:
 
 1. `Pairion-Server/openapi.yaml`
 2. `Pairion-Server/asyncapi.yaml`
-3. `Pairion-Client-Architecture.md`
+3. `Architecture.md`
 4. `Pairion-Charter.md`
 5. Any Claude Code prompt
 6. Prior conversation context
@@ -33,7 +33,7 @@ When documents conflict, later beats earlier in this order:
 ### 1.3 Tests ship with code, always
 
 - **Unit tests and integration tests ship in the same pass as the feature or fix.** No follow-up tickets for tests. Ever.
-- **100% code coverage is mandatory, not aspirational.** Enforced by CI.
+- **100% code coverage is mandatory, not aspirational.** Enforced by local verification during task execution.
 - Tests validate behavior from public API, not internal implementation details.
 - Test fixtures and harnesses are first-class code — same conventions, same review bar.
 
@@ -76,7 +76,7 @@ All prompts to Claude Code are `.md` file artifacts. Every prompt:
   > STOP: Before writing ANY code, read these files completely:
   > 1. `~/Documents/Github/Pairion-Server/openapi.yaml` — The OpenAPI spec defines every field name, type, enum value, and endpoint path. Your code must match it exactly.
   > 2. `~/Documents/Github/Pairion-Server/asyncapi.yaml` — The AsyncAPI spec defines the streaming WebSocket protocol.
-  > 3. `~/Documents/Github/Pairion-Client/Pairion-Client-Architecture.md` — The architecture spec defines the component layout, audio pipeline, HUD composition, and invariants.
+  > 3. `~/Documents/Github/Pairion-Client/Architecture.md` — The architecture spec defines the component layout, audio pipeline, HUD composition, and invariants.
   > 4. `~/Documents/Github/Pairion-Server/Pairion-Charter.md` — The project charter.
   > Do not rely on the descriptions in this prompt alone. If this prompt conflicts with the source files, the source files win.
   >
@@ -129,7 +129,7 @@ They communicate via typed **Tauri commands** (React → Rust) and **Tauri event
 
 ### 2.5 Audio pipeline discipline
 
-- **Latency is load-bearing.** The audio capture and playback paths have explicit latency budgets in `Pairion-Client-Architecture.md` §5.3. Regressions fail CI.
+- **Latency is load-bearing.** The audio capture and playback paths have explicit latency budgets in `Architecture.md` §5.3. Regressions fail CI.
 - **cpal callbacks must be non-blocking.** No allocations, no locks, no logging in the capture callback. Use ring buffers.
 - **Opus encode/decode runs on dedicated threads.** Never on the tokio default executor.
 - **Jitter buffers** are tuned per platform; values in source are documented with the reasoning.
@@ -185,7 +185,7 @@ They communicate via typed **Tauri commands** (React → Rust) and **Tauri event
 - **Trunk-based.** `main` is always green.
 - **Conventional Commits:** `feat(hud): add sub-agent spawn animation`, `fix(audio): prevent underrun on wake`.
 - **Every PR links its Claude Code prompt.**
-- **CI must be green to merge.**
+- **Local verification must pass before merge.** No GitHub Actions CI is configured. Do not re-add CI workflows unless a prompt explicitly directs it.
 
 ### 2.14 Build and packaging
 
@@ -196,7 +196,7 @@ They communicate via typed **Tauri commands** (React → Rust) and **Tauri event
 
 ---
 
-## 3. Invariants (from `Pairion-Client-Architecture.md` §16)
+## 3. Invariants (from `Architecture.md` §16)
 
 1. **No agent code runs in the Client.** No LLM calls, no memory, no voice-ID logic.
 2. **Screen capture shows a visible indicator whenever active.** No exceptions.
@@ -210,9 +210,11 @@ They communicate via typed **Tauri commands** (React → Rust) and **Tauri event
 
 ---
 
-## 4. CI Pipeline
+## 4. Local Verification Pipeline
 
-Every PR runs, in order:
+**Verification runs locally during task execution** — Claude Code runs tests, lints, typechecks, and coverage as part of every task. No GitHub Actions CI is configured. Do not re-add CI workflows unless a prompt explicitly directs it.
+
+Every task runs, in order:
 
 1. `pnpm install --frozen-lockfile`
 2. `pnpm lint` (ESLint + Prettier check)
@@ -228,10 +230,10 @@ Every PR runs, in order:
 12. `pnpm test:bench` (audio latency)
 13. `pnpm coverage:check`
 
-Failure at any step fails the build.
+Failure at any step fails the task.
 
 ---
 
 ## 5. When In Doubt
 
-Read, in order: this document, `Pairion-Charter.md`, `Pairion-Client-Architecture.md`, `Pairion-Server/openapi.yaml`, `Pairion-Server/asyncapi.yaml`. If still uncertain, the code you're about to write is probably wrong — stop and ask.
+Read, in order: this document, `Pairion-Charter.md`, `Architecture.md`, `Pairion-Server/openapi.yaml`, `Pairion-Server/asyncapi.yaml`. If still uncertain, the code you're about to write is probably wrong — stop and ask.
