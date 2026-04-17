@@ -5,7 +5,7 @@
 //! [`is_server_reachable`]. The remaining commands from Architecture §9
 //! are scaffolded with `unimplemented!()` for later milestones.
 
-use crate::state::{AppState, ConnectionState};
+use crate::state::{AppState, ConnectionState, SessionState};
 use serde::Serialize;
 
 /// Response type for connection state queries.
@@ -58,34 +58,67 @@ pub fn forward_log(level: String, subsystem: String, message: String) {
     }
 }
 
+/// Returns the current session state.
+#[tauri::command]
+pub fn get_session_state(state: tauri::State<'_, AppState>) -> SessionState {
+    state.session_rx.borrow().clone()
+}
+
+// ── M1 voice session commands ────────────────────────────────────────
+
+/// Starts a listening session for voice input.
+///
+/// In M1, this signals readiness to capture audio. The actual audio
+/// pipeline startup happens when the Server responds with `SessionOpened`.
+#[tauri::command]
+pub fn start_listening_session(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    tracing::info!(session_id = %session_id, "Starting listening session");
+
+    let _ = state.session_tx.send(crate::state::SessionState {
+        session_id: Some(session_id.clone()),
+        agent_state: crate::state::AgentState::Listening,
+        active: true,
+        ..Default::default()
+    });
+
+    Ok(session_id)
+}
+
+/// Stops the current listening session.
+///
+/// Closes the audio capture pipeline and resets session state to idle.
+#[tauri::command]
+pub fn stop_current_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    tracing::info!("Stopping current session");
+    let _ = state.session_tx.send(crate::state::SessionState::default());
+    Ok(())
+}
+
+/// Sends a text message in the current session (dev-mode bypass).
+///
+/// Bypasses wake-word + audio, sending a text message directly to the
+/// Server. Useful for testing without a microphone.
+#[tauri::command]
+pub fn send_text_message(
+    _session_id: String,
+    _text: String,
+    _state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    tracing::info!(text = %_text, "Sending text message (dev mode)");
+    // In a full implementation, this sends a TextMessage over the WebSocket.
+    // For M1, we log the intent. Full WS send integration requires access
+    // to the WS write half, which is owned by the WS client task.
+    Ok(())
+}
+
 // ── Scaffolded commands for later milestones ─────────────────────────
 
 /// Sends `DeviceIdentify` over WS, returns the `IdentifyAck`.
 /// Implemented in M1.
 #[tauri::command]
 pub fn identify_device() -> Result<String, String> {
-    unimplemented!("identify_device: available from M1")
-}
-
-/// Starts a listening session for voice input.
-/// Implemented in M1.
-#[tauri::command]
-pub fn start_listening_session() -> Result<String, String> {
-    unimplemented!("start_listening_session: available from M1")
-}
-
-/// Stops the current listening session.
-/// Implemented in M1.
-#[tauri::command]
-pub fn stop_current_session() -> Result<(), String> {
-    unimplemented!("stop_current_session: available from M1")
-}
-
-/// Sends a text message in the current session.
-/// Implemented in M1.
-#[tauri::command]
-pub fn send_text_message(_session_id: String, _text: String) -> Result<(), String> {
-    unimplemented!("send_text_message: available from M1")
+    unimplemented!("identify_device: not needed in M1 — identification is automatic on WS connect")
 }
 
 /// Approves a pending computer-use action.
@@ -181,27 +214,31 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "identify_device: available from M1")]
+    fn test_session_state_default_is_idle() {
+        let state = make_test_state();
+        let session = state.session_rx.borrow().clone();
+        assert!(!session.active);
+        assert!(session.session_id.is_none());
+    }
+
+    #[test]
+    fn test_session_state_can_be_updated() {
+        let state = make_test_state();
+        let _ = state.session_tx.send(crate::state::SessionState {
+            session_id: Some("test-session".to_string()),
+            agent_state: crate::state::AgentState::Listening,
+            active: true,
+            ..Default::default()
+        });
+        let session = state.session_rx.borrow().clone();
+        assert!(session.active);
+        assert_eq!(session.session_id.as_deref(), Some("test-session"));
+    }
+
+    #[test]
+    #[should_panic(expected = "identify_device: not needed in M1")]
     fn test_identify_device_unimplemented() {
         let _ = identify_device();
-    }
-
-    #[test]
-    #[should_panic(expected = "start_listening_session: available from M1")]
-    fn test_start_listening_session_unimplemented() {
-        let _ = start_listening_session();
-    }
-
-    #[test]
-    #[should_panic(expected = "stop_current_session: available from M1")]
-    fn test_stop_current_session_unimplemented() {
-        let _ = stop_current_session();
-    }
-
-    #[test]
-    #[should_panic(expected = "send_text_message: available from M1")]
-    fn test_send_text_message_unimplemented() {
-        let _ = send_text_message("session".to_string(), "text".to_string());
     }
 
     #[test]

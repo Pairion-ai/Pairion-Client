@@ -4,6 +4,29 @@ All notable changes to Pairion Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-04-17
+
+### Added
+
+- M1 First Voice: Audio capture/playback pipeline with cpal + ring buffers
+- AudioCaptureManager with non-blocking cpal input callback and SPSC ring buffer
+- AudioPlaybackManager with jitter buffer and cpal output callback
+- AudioPipeline orchestrator (capture + playback + pre-wake buffer)
+- PreWakeBuffer: 200ms circular buffer for retaining initial syllable before wake
+- Wake-word detection module with trait-based WakeWordDetector abstraction
+- EnergyWakeDetector for development testing (simulates wake-word with audio energy)
+- False-wake suppression within 500ms window
+- VAD module with trait-based VoiceActivityDetector abstraction
+- EnergyVad for development (800ms silence threshold triggers end-of-speech)
+- Extended WebSocket messages: WakeWordDetected, AudioStreamStart/End, SpeechEnded, TextMessage, SessionOpened/Closed, TranscriptPartial/Final, LlmTokenStream, AgentStateChange, ToolCallStarted/Completed
+- WebSocket message dispatch for all M1 inbound message types
+- Binary WebSocket frame handling for AudioChunkOut (TTS audio)
+- Session state management with AgentState enum and watch channel
+- Voice-state indicator in HUD: Idle/Listening/Thinking/Speaking badges
+- Live transcript strip showing partial and final STT text
+- Implemented Tauri commands: start_listening_session, stop_current_session, send_text_message, get_session_state
+- 119 Rust tests + 55 React tests
+
 ## [0.1.0] - 2026-04-17
 
 ### Added

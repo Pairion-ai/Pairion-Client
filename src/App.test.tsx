@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
 import App from "./App";
 import { useConnectionStore } from "./state/connectionStore";
+import { useSessionStore } from "./state/sessionStore";
 import { useSettingsStore } from "./state/settingsStore";
 
 describe("App", () => {
@@ -12,6 +13,14 @@ describe("App", () => {
       lastError: null,
       reconnectAttempt: 0,
       serverUrl: "ws://localhost:18789/ws/v1",
+    });
+    useSessionStore.setState({
+      sessionId: null,
+      userId: null,
+      active: false,
+      agentState: "idle",
+      partialTranscript: "",
+      finalTranscript: "",
     });
     useSettingsStore.setState({
       screenCaptureActive: false,
@@ -88,5 +97,91 @@ describe("App", () => {
     render(<App />);
     const dot = screen.getByTestId("status-dot");
     expect(dot.className).toContain("bg-red-500");
+  });
+
+  // ── M1 voice state tests ──────────────────────────────────
+
+  it("shows voice-state section when connected", () => {
+    useConnectionStore.setState({ status: "connected" });
+    render(<App />);
+    expect(screen.getByTestId("voice-section")).toBeInTheDocument();
+  });
+
+  it("does not show voice-state section when disconnected", () => {
+    useConnectionStore.setState({ status: "disconnected" });
+    render(<App />);
+    expect(screen.queryByTestId("voice-section")).not.toBeInTheDocument();
+  });
+
+  it("shows Idle agent state badge by default", () => {
+    useConnectionStore.setState({ status: "connected" });
+    render(<App />);
+    expect(screen.getByTestId("agent-state-badge")).toHaveTextContent("Idle");
+  });
+
+  it("shows Listening agent state badge", () => {
+    useConnectionStore.setState({ status: "connected" });
+    useSessionStore.setState({ agentState: "listening" });
+    render(<App />);
+    const badge = screen.getByTestId("agent-state-badge");
+    expect(badge).toHaveTextContent("Listening");
+    expect(badge.className).toContain("bg-pairion-amber");
+  });
+
+  it("shows Thinking agent state badge", () => {
+    useConnectionStore.setState({ status: "connected" });
+    useSessionStore.setState({ agentState: "thinking" });
+    render(<App />);
+    const badge = screen.getByTestId("agent-state-badge");
+    expect(badge).toHaveTextContent("Thinking");
+    expect(badge.className).toContain("bg-pairion-cyan");
+  });
+
+  it("shows Speaking agent state badge", () => {
+    useConnectionStore.setState({ status: "connected" });
+    useSessionStore.setState({ agentState: "speaking" });
+    render(<App />);
+    const badge = screen.getByTestId("agent-state-badge");
+    expect(badge).toHaveTextContent("Speaking");
+    expect(badge.className).toContain("bg-green-500");
+  });
+
+  it("shows partial transcript strip", () => {
+    useConnectionStore.setState({ status: "connected" });
+    useSessionStore.setState({
+      active: true,
+      agentState: "listening",
+      partialTranscript: "what's the",
+    });
+    render(<App />);
+    expect(screen.getByTestId("transcript-strip")).toHaveTextContent("what's the");
+  });
+
+  it("shows final transcript strip", () => {
+    useConnectionStore.setState({ status: "connected" });
+    useSessionStore.setState({
+      active: true,
+      agentState: "thinking",
+      finalTranscript: "what's the weather",
+    });
+    render(<App />);
+    expect(screen.getByTestId("transcript-strip")).toHaveTextContent("what's the weather");
+  });
+
+  it("does not show transcript strip when no transcript", () => {
+    useConnectionStore.setState({ status: "connected" });
+    useSessionStore.setState({ active: true, agentState: "listening" });
+    render(<App />);
+    expect(screen.queryByTestId("transcript-strip")).not.toBeInTheDocument();
+  });
+
+  it("does not show transcript strip when session inactive", () => {
+    useConnectionStore.setState({ status: "connected" });
+    useSessionStore.setState({
+      active: false,
+      partialTranscript: "test",
+    });
+    render(<App />);
+    expect(screen.queryByTestId("transcript-strip")).not.toBeInTheDocument();
   });
 });

@@ -13,6 +13,8 @@ pub mod logs;
 pub mod screen;
 pub mod secrets;
 pub mod state;
+pub mod vad;
+pub mod wake;
 pub mod ws;
 
 use config::AppConfig;
@@ -33,6 +35,7 @@ pub fn run() {
     let app_config = AppConfig::default();
     let app_state = AppState::new(device_id.clone(), app_config.ws_url.clone());
     let connection_tx = app_state.connection_tx.clone();
+    let session_tx = app_state.session_tx.clone();
 
     // Read bearer token
     let keychain = secrets::NoopKeychainProvider;
@@ -49,16 +52,21 @@ pub fn run() {
             commands::get_device_id,
             commands::is_server_reachable,
             commands::forward_log,
+            commands::get_session_state,
+            commands::start_listening_session,
+            commands::stop_current_session,
+            commands::send_text_message,
         ])
         .setup(move |_app| {
             let config = app_config.clone();
             let dev_id = device_id.clone();
             let tok = token.clone();
-            let ctx = Arc::clone(&connection_tx);
+            let conn_tx = Arc::clone(&connection_tx);
+            let sess_tx = Arc::clone(&session_tx);
 
             // Spawn the WebSocket client on the Tokio runtime
             tauri::async_runtime::spawn(async move {
-                ws::run_ws_client(config, dev_id, tok, ctx).await;
+                ws::run_ws_client(config, dev_id, tok, conn_tx, sess_tx).await;
             });
 
             Ok(())

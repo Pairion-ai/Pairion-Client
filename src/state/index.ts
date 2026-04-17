@@ -11,7 +11,12 @@ export { useSettingsStore } from "./settingsStore";
 export type { SettingsState, SettingsActions, SettingsStore } from "./settingsStore";
 
 export { useSessionStore } from "./sessionStore";
-export type { SessionState, SessionActions, SessionStore } from "./sessionStore";
+export type {
+  AgentState,
+  SessionState,
+  SessionActions,
+  SessionStore,
+} from "./sessionStore";
 
 export { useHudStore } from "./hudStore";
 export type { HudState, HudActions, HudStore } from "./hudStore";

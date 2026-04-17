@@ -50,6 +50,68 @@ impl ConnectionState {
     }
 }
 
+/// Agent state as reported by the Server via `AgentStateChange` messages.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AgentState {
+    /// No active session; waiting for wake word or user input.
+    #[default]
+    Idle,
+    /// Wake word fired; capturing user speech.
+    Listening,
+    /// Server is processing (STT, LLM, tool calls).
+    Thinking,
+    /// TTS audio is playing.
+    Speaking,
+    /// Identifying speaker (M5+).
+    Identifying,
+    /// Handing off to another device/node (M6+).
+    Handoff,
+}
+
+impl AgentState {
+    /// Parses an agent state string from the Server's `AgentStateChange` message.
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "idle" => Self::Idle,
+            "listening" => Self::Listening,
+            "thinking" => Self::Thinking,
+            "speaking" => Self::Speaking,
+            "identifying" => Self::Identifying,
+            "handoff" => Self::Handoff,
+            _ => Self::Idle,
+        }
+    }
+
+    /// Returns a human-readable label for the current state.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Idle => "Idle",
+            Self::Listening => "Listening",
+            Self::Thinking => "Thinking",
+            Self::Speaking => "Speaking",
+            Self::Identifying => "Identifying",
+            Self::Handoff => "Handoff",
+        }
+    }
+}
+
+/// Session state tracking the current voice session.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SessionState {
+    /// Current session ID, if any.
+    pub session_id: Option<String>,
+    /// Current agent state.
+    pub agent_state: AgentState,
+    /// Latest partial transcript from STT.
+    pub partial_transcript: String,
+    /// Latest finalized transcript.
+    pub final_transcript: String,
+    /// Whether a session is currently active.
+    pub active: bool,
+    /// The audio stream ID for the current capture, if any.
+    pub current_stream_id: Option<String>,
+}
+
 /// Shared application state accessible across Tauri commands and the WS client.
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -61,17 +123,24 @@ pub struct AppState {
     pub device_id: String,
     /// The WebSocket server URL.
     pub server_url: String,
+    /// Sender half of the session state watch channel.
+    pub session_tx: Arc<watch::Sender<SessionState>>,
+    /// Receiver half of the session state watch channel.
+    pub session_rx: watch::Receiver<SessionState>,
 }
 
 impl AppState {
     /// Creates a new application state with the given device id and server URL.
     pub fn new(device_id: String, server_url: String) -> Self {
-        let (tx, rx) = watch::channel(ConnectionState::default());
+        let (conn_tx, conn_rx) = watch::channel(ConnectionState::default());
+        let (sess_tx, sess_rx) = watch::channel(SessionState::default());
         Self {
-            connection_tx: Arc::new(tx),
-            connection_rx: rx,
+            connection_tx: Arc::new(conn_tx),
+            connection_rx: conn_rx,
             device_id,
             server_url,
+            session_tx: Arc::new(sess_tx),
+            session_rx: sess_rx,
         }
     }
 }
@@ -130,6 +199,57 @@ mod tests {
         assert_eq!(state.device_id, "dev-001");
         assert_eq!(state.server_url, "ws://localhost:18789/ws/v1");
         assert_eq!(*state.connection_rx.borrow(), ConnectionState::Connecting);
+    }
+
+    #[test]
+    fn test_agent_state_from_str_lossy() {
+        assert_eq!(AgentState::from_str_lossy("idle"), AgentState::Idle);
+        assert_eq!(
+            AgentState::from_str_lossy("listening"),
+            AgentState::Listening
+        );
+        assert_eq!(AgentState::from_str_lossy("thinking"), AgentState::Thinking);
+        assert_eq!(AgentState::from_str_lossy("speaking"), AgentState::Speaking);
+        assert_eq!(
+            AgentState::from_str_lossy("identifying"),
+            AgentState::Identifying
+        );
+        assert_eq!(AgentState::from_str_lossy("handoff"), AgentState::Handoff);
+        assert_eq!(AgentState::from_str_lossy("unknown"), AgentState::Idle);
+    }
+
+    #[test]
+    fn test_agent_state_labels() {
+        assert_eq!(AgentState::Idle.label(), "Idle");
+        assert_eq!(AgentState::Listening.label(), "Listening");
+        assert_eq!(AgentState::Thinking.label(), "Thinking");
+        assert_eq!(AgentState::Speaking.label(), "Speaking");
+    }
+
+    #[test]
+    fn test_session_state_default() {
+        let state = SessionState::default();
+        assert!(state.session_id.is_none());
+        assert_eq!(state.agent_state, AgentState::Idle);
+        assert!(state.partial_transcript.is_empty());
+        assert!(state.final_transcript.is_empty());
+        assert!(!state.active);
+    }
+
+    #[test]
+    fn test_session_state_watch_channel() {
+        let state = AppState::new(
+            "dev-001".to_string(),
+            "ws://localhost:18789/ws/v1".to_string(),
+        );
+        let new_session = SessionState {
+            session_id: Some("sess-1".to_string()),
+            agent_state: AgentState::Listening,
+            active: true,
+            ..Default::default()
+        };
+        let _ = state.session_tx.send(new_session.clone());
+        assert_eq!(*state.session_rx.borrow(), new_session);
     }
 
     #[test]

@@ -13,24 +13,25 @@ mod messages;
 pub use messages::*;
 
 use crate::config::AppConfig;
-use crate::state::ConnectionState;
+use crate::state::{AgentState, ConnectionState, SessionState};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::Message;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Runs the WebSocket client loop, managing connections and reconnections.
 ///
 /// This function runs indefinitely, reconnecting on failure with exponential
-/// backoff. It updates the connection state via the provided watch channel
-/// sender. The `token` is used for authentication in `DeviceIdentify`.
+/// backoff. It updates both connection and session state via the provided
+/// watch channel senders. The `token` is used for authentication in `DeviceIdentify`.
 pub async fn run_ws_client(
     config: AppConfig,
     device_id: String,
     token: String,
     connection_tx: Arc<watch::Sender<ConnectionState>>,
+    session_tx: Arc<watch::Sender<SessionState>>,
 ) {
     let mut attempt: u32 = 0;
 
@@ -41,7 +42,7 @@ pub async fn run_ws_client(
             ConnectionState::Reconnecting { attempt }
         });
 
-        match connect_and_run(&config, &device_id, &token, &connection_tx).await {
+        match connect_and_run(&config, &device_id, &token, &connection_tx, &session_tx).await {
             Ok(()) => {
                 info!("WebSocket connection closed normally");
             }
@@ -75,6 +76,7 @@ async fn connect_and_run(
     device_id: &str,
     token: &str,
     connection_tx: &Arc<watch::Sender<ConnectionState>>,
+    session_tx: &Arc<watch::Sender<SessionState>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (ws_stream, _) = tokio_tungstenite::connect_async(&config.ws_url).await?;
     let (mut write, mut read) = ws_stream.split();
@@ -138,15 +140,13 @@ async fn connect_and_run(
             msg = read.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(pong) = serde_json::from_str::<HeartbeatPongPayload>(&text) {
-                            if pong.r#type == "HeartbeatPong" {
-                                last_pong = tokio::time::Instant::now();
-                                let _ = connection_tx.send(ConnectionState::Connected {
-                                    latency_ms: Some(pong.latency_ms),
-                                });
-                            }
-                        }
-                        // Other message types are ignored in M0
+                        handle_text_message(&text, connection_tx, session_tx, &mut last_pong);
+                    }
+                    Some(Ok(Message::Binary(_data))) => {
+                        // M1: Binary frames are AudioChunkOut (TTS audio)
+                        // Playback integration is handled by the audio pipeline
+                        // which reads from a shared channel. For now, log receipt.
+                        debug!("Received binary audio frame ({} bytes)", _data.len());
                     }
                     Some(Ok(Message::Close(_))) => {
                         info!("Server closed connection");
@@ -160,9 +160,112 @@ async fn connect_and_run(
                         info!("WebSocket stream ended");
                         return Ok(());
                     }
-                    _ => {} // Binary, Ping, Pong frames handled by tungstenite
+                    _ => {} // Ping, Pong frames handled by tungstenite
                 }
             }
+        }
+    }
+}
+
+/// Dispatches an incoming JSON text message based on its `type` field.
+///
+/// Updates connection and session state as appropriate. Unknown message
+/// types are logged at debug level and ignored.
+fn handle_text_message(
+    text: &str,
+    connection_tx: &Arc<watch::Sender<ConnectionState>>,
+    session_tx: &Arc<watch::Sender<SessionState>>,
+    last_pong: &mut tokio::time::Instant,
+) {
+    // First try to read the type discriminator
+    let Ok(incoming) = serde_json::from_str::<IncomingMessage>(text) else {
+        warn!("Received unparseable WS message");
+        return;
+    };
+
+    match incoming.r#type.as_str() {
+        "HeartbeatPong" => {
+            if let Ok(pong) = serde_json::from_str::<HeartbeatPongPayload>(text) {
+                *last_pong = tokio::time::Instant::now();
+                let _ = connection_tx.send(ConnectionState::Connected {
+                    latency_ms: Some(pong.latency_ms),
+                });
+            }
+        }
+        "SessionOpened" => {
+            if let Ok(msg) = serde_json::from_str::<SessionOpenedPayload>(text) {
+                info!(session_id = %msg.session_id, user_id = %msg.user_id, "Session opened");
+                let _ = session_tx.send(SessionState {
+                    session_id: Some(msg.session_id),
+                    agent_state: AgentState::Listening,
+                    active: true,
+                    ..Default::default()
+                });
+            }
+        }
+        "SessionClosed" => {
+            if let Ok(msg) = serde_json::from_str::<SessionClosedPayload>(text) {
+                info!(session_id = %msg.session_id, reason = %msg.reason, "Session closed");
+                let _ = session_tx.send(SessionState::default());
+            }
+        }
+        "AgentStateChange" => {
+            if let Ok(msg) = serde_json::from_str::<AgentStateChangePayload>(text) {
+                let new_state = AgentState::from_str_lossy(&msg.state);
+                debug!(state = %msg.state, "Agent state changed");
+                session_tx.send_modify(|s| {
+                    s.agent_state = new_state;
+                });
+            }
+        }
+        "TranscriptPartial" => {
+            if let Ok(msg) = serde_json::from_str::<TranscriptPartialPayload>(text) {
+                debug!(text = %msg.text, "Partial transcript");
+                session_tx.send_modify(|s| {
+                    s.partial_transcript = msg.text;
+                });
+            }
+        }
+        "TranscriptFinal" => {
+            if let Ok(msg) = serde_json::from_str::<TranscriptFinalPayload>(text) {
+                info!(text = %msg.text, "Final transcript");
+                session_tx.send_modify(|s| {
+                    s.final_transcript = msg.text;
+                    s.partial_transcript.clear();
+                });
+            }
+        }
+        "AudioStreamStart" => {
+            if let Ok(msg) = serde_json::from_str::<AudioStreamStartPayload>(text) {
+                if msg.direction == "out" {
+                    debug!(
+                        stream_id = %msg.stream_id,
+                        codec = %msg.codec,
+                        sample_rate = msg.sample_rate,
+                        "Server started outbound audio stream"
+                    );
+                }
+            }
+        }
+        "AudioStreamEnd" => {
+            if let Ok(msg) = serde_json::from_str::<AudioStreamEndPayload>(text) {
+                debug!(
+                    stream_id = %msg.stream_id,
+                    reason = msg.reason.as_deref().unwrap_or("normal"),
+                    "Audio stream ended"
+                );
+            }
+        }
+        "LlmTokenStream" | "ToolCallStarted" | "ToolCallCompleted" => {
+            debug!(msg_type = %incoming.r#type, "Received agent trace message");
+        }
+        "Error" => {
+            if let Ok(err) = serde_json::from_str::<ErrorPayload>(text) {
+                warn!(code = %err.code, message = %err.message, "Server error");
+            }
+        }
+        other => {
+            debug!(msg_type = %other, "Received unhandled message type");
         }
     }
 }
@@ -185,5 +288,138 @@ mod tests {
     #[test]
     fn test_calculate_backoff_custom_max() {
         assert_eq!(calculate_backoff(5, 10), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_handle_heartbeat_pong() {
+        let (conn_tx, conn_rx) = watch::channel(ConnectionState::default());
+        let (sess_tx, _sess_rx) = watch::channel(SessionState::default());
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        let msg = r#"{"type":"HeartbeatPong","timestamp":"2025-01-01T00:00:00Z","latencyMs":15.0}"#;
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+
+        let state = conn_rx.borrow().clone();
+        match state {
+            ConnectionState::Connected { latency_ms } => {
+                assert_eq!(latency_ms, Some(15.0));
+            }
+            other => panic!("Expected Connected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_handle_session_opened() {
+        let (conn_tx, _) = watch::channel(ConnectionState::default());
+        let (sess_tx, sess_rx) = watch::channel(SessionState::default());
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        let msg = r#"{"type":"SessionOpened","sessionId":"sess-1","userId":"owner","timestamp":"2025-01-01T00:00:00Z"}"#;
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+
+        let session = sess_rx.borrow();
+        assert_eq!(session.session_id.as_deref(), Some("sess-1"));
+        assert!(session.active);
+        assert_eq!(session.agent_state, AgentState::Listening);
+    }
+
+    #[test]
+    fn test_handle_session_closed() {
+        let (conn_tx, _) = watch::channel(ConnectionState::default());
+        let (sess_tx, sess_rx) = watch::channel(SessionState {
+            session_id: Some("sess-1".to_string()),
+            active: true,
+            ..Default::default()
+        });
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        let msg = r#"{"type":"SessionClosed","sessionId":"sess-1","reason":"normal","timestamp":"2025-01-01T00:00:00Z"}"#;
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+
+        let session = sess_rx.borrow();
+        assert!(session.session_id.is_none());
+        assert!(!session.active);
+    }
+
+    #[test]
+    fn test_handle_agent_state_change() {
+        let (conn_tx, _) = watch::channel(ConnectionState::default());
+        let (sess_tx, sess_rx) = watch::channel(SessionState {
+            session_id: Some("s1".to_string()),
+            active: true,
+            ..Default::default()
+        });
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        let msg = r#"{"type":"AgentStateChange","sessionId":"s1","state":"thinking","timestamp":"2025-01-01T00:00:00Z"}"#;
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+
+        assert_eq!(sess_rx.borrow().agent_state, AgentState::Thinking);
+    }
+
+    #[test]
+    fn test_handle_transcript_partial() {
+        let (conn_tx, _) = watch::channel(ConnectionState::default());
+        let (sess_tx, sess_rx) = watch::channel(SessionState::default());
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        let msg = r#"{"type":"TranscriptPartial","sessionId":"s1","text":"what's the","timestamp":"2025-01-01T00:00:00Z"}"#;
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+
+        assert_eq!(sess_rx.borrow().partial_transcript, "what's the");
+    }
+
+    #[test]
+    fn test_handle_transcript_final() {
+        let (conn_tx, _) = watch::channel(ConnectionState::default());
+        let (sess_tx, sess_rx) = watch::channel(SessionState {
+            partial_transcript: "what's the wea".to_string(),
+            ..Default::default()
+        });
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        let msg = r#"{"type":"TranscriptFinal","sessionId":"s1","text":"what's the weather","timestamp":"2025-01-01T00:00:00Z"}"#;
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+
+        let session = sess_rx.borrow();
+        assert_eq!(session.final_transcript, "what's the weather");
+        assert!(session.partial_transcript.is_empty());
+    }
+
+    #[test]
+    fn test_handle_unknown_message() {
+        let (conn_tx, _) = watch::channel(ConnectionState::default());
+        let (sess_tx, _) = watch::channel(SessionState::default());
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        // Should not panic on unknown types
+        let msg = r#"{"type":"SomeUnknownType","data":"test"}"#;
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+    }
+
+    #[test]
+    fn test_handle_invalid_json() {
+        let (conn_tx, _) = watch::channel(ConnectionState::default());
+        let (sess_tx, _) = watch::channel(SessionState::default());
+        let conn_tx = Arc::new(conn_tx);
+        let sess_tx = Arc::new(sess_tx);
+        let mut last_pong = tokio::time::Instant::now();
+
+        // Should not panic on invalid JSON
+        handle_text_message("not json", &conn_tx, &sess_tx, &mut last_pong);
     }
 }
