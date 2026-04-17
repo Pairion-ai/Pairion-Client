@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust format check
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --deny warnings
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: TypeScript type check
+        run: pnpm typecheck
+
+      - name: Rust tests
+        run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
+
+      - name: React tests
+        run: pnpm test
+
+      # Scaffolded steps — run trivially in M0, populated in later milestones
+      - name: E2E tests (scaffolded)
+        run: pnpm test:e2e
+
+      - name: Visual regression tests (scaffolded)
+        run: pnpm test:visual
+
+      - name: Secret leakage tests (scaffolded)
+        run: pnpm test:leak
+
+      - name: Audio latency benchmark (scaffolded)
+        run: pnpm test:bench
