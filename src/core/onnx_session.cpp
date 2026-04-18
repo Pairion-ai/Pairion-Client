@@ -44,9 +44,16 @@ std::vector<OnnxOutput> OrtInferenceSession::run(const std::vector<OnnxTensor> &
     std::vector<Ort::Value> inputValues;
     inputValues.reserve(inputs.size());
     for (const auto &inp : inputs) {
-        auto *dataPtr = const_cast<float *>(inp.data.data());
-        inputValues.push_back(Ort::Value::CreateTensor<float>(
-            m_impl->memInfo, dataPtr, inp.data.size(), inp.shape.data(), inp.shape.size()));
+        if (inp.isInt64()) {
+            auto *dataPtr = const_cast<int64_t *>(inp.int64Data.data());
+            inputValues.push_back(
+                Ort::Value::CreateTensor<int64_t>(m_impl->memInfo, dataPtr, inp.int64Data.size(),
+                                                  inp.shape.data(), inp.shape.size()));
+        } else {
+            auto *dataPtr = const_cast<float *>(inp.data.data());
+            inputValues.push_back(Ort::Value::CreateTensor<float>(
+                m_impl->memInfo, dataPtr, inp.data.size(), inp.shape.data(), inp.shape.size()));
+        }
     }
 
     // Build output name pointers

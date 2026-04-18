@@ -15,8 +15,9 @@ using namespace pairion::core;
 
 /// Helper to create a mock output with speech probability and h/c state.
 static std::vector<OnnxOutput> vadOutput(float speechProb) {
-    return {OnnxOutput{{speechProb}, {1, 1}}, OnnxOutput{std::vector<float>(128, 0.0f), {2, 1, 64}},
-            OnnxOutput{std::vector<float>(128, 0.0f), {2, 1, 64}}};
+    return {OnnxOutput{{speechProb}, {1, 1}},
+            OnnxOutput{std::vector<float>(256, 0.0f), {2, 1, 128}},
+            OnnxOutput{std::vector<float>(256, 0.0f), {2, 1, 128}}};
 }
 
 class TestSileroVad : public QObject {
@@ -132,9 +133,8 @@ class TestSileroVad : public QObject {
     void recurrentStateUpdated() {
         MockOnnxSession session;
         // Return non-zero h/c state
-        std::vector<float> customState(128, 0.42f);
-        session.enqueueOutput({OnnxOutput{{0.1f}, {1, 1}}, OnnxOutput{customState, {2, 1, 64}},
-                               OnnxOutput{customState, {2, 1, 64}}});
+        std::vector<float> customState(256, 0.42f);
+        session.enqueueOutput({OnnxOutput{{0.1f}, {1, 1}}, OnnxOutput{customState, {2, 1, 128}}});
         session.enqueueOutput(vadOutput(0.1f));
 
         SileroVad vad(&session, 0.5, 800);

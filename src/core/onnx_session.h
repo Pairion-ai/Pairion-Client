@@ -17,12 +17,19 @@
 namespace pairion::core {
 
 /**
- * @brief A named tensor with flat float data and shape metadata.
+ * @brief A named tensor with flat data and shape metadata.
+ *
+ * Supports float32 data (via `data` field) and int64 data (via `int64Data`).
+ * Exactly one of the two data fields should be populated; the other should be empty.
  */
 struct OnnxTensor {
     std::string name;
     std::vector<float> data;
+    std::vector<int64_t> int64Data;
     std::vector<int64_t> shape;
+
+    /// @brief Whether this tensor contains int64 data.
+    bool isInt64() const { return !int64Data.empty() && data.empty(); }
 };
 
 /**
