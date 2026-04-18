@@ -1,0 +1,116 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "macos-debug",
+            "inherits": "base",
+            "displayName": "macOS Debug",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wpedantic -Werror",
+                "PAIRION_COVERAGE": "ON"
+            }
+        },
+        {
+            "name": "macos-release",
+            "inherits": "base",
+            "displayName": "macOS Release",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wpedantic -Werror"
+            }
+        },
+        {
+            "name": "windows-debug",
+            "inherits": "base",
+            "displayName": "Windows Debug",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS": "/W4 /WX"
+            }
+        },
+        {
+            "name": "windows-release",
+            "inherits": "base",
+            "displayName": "Windows Release",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS": "/W4 /WX"
+            }
+        },
+        {
+            "name": "linux-debug",
+            "inherits": "base",
+            "displayName": "Linux Debug",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wpedantic -Werror",
+                "PAIRION_COVERAGE": "ON"
+            }
+        },
+        {
+            "name": "linux-release",
+            "inherits": "base",
+            "displayName": "Linux Release",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wpedantic -Werror"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "macos-debug", "configurePreset": "macos-debug" },
+        { "name": "macos-release", "configurePreset": "macos-release" },
+        { "name": "windows-debug", "configurePreset": "windows-debug" },
+        { "name": "windows-release", "configurePreset": "windows-release" },
+        { "name": "linux-debug", "configurePreset": "linux-debug" },
+        { "name": "linux-release", "configurePreset": "linux-release" }
+    ],
+    "testPresets": [
+        {
+            "name": "macos-debug",
+            "configurePreset": "macos-debug",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "macos-release",
+            "configurePreset": "macos-release",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "windows-debug",
+            "configurePreset": "windows-debug",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "windows-release",
+            "configurePreset": "windows-release",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "linux-debug",
+            "configurePreset": "linux-debug",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "linux-release",
+            "configurePreset": "linux-release",
+            "output": { "outputOnFailure": true }
+        }
+    ]
+}

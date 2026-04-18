@@ -1,14 +1,27 @@
-# Dependencies
-node_modules/
+# C++ / CMake build artifacts
+build/
+cmake-build-*/
+CMakeUserPresets.json
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
 
-# Build output
-dist/
-src-tauri/target/
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+coverage/
+lcov.info
 
-# Environment
-.env
-.env.*
-!.env.example
+# Qt
+moc_*.cpp
+*.moc
+qrc_*.cpp
+ui_*.h
 
 # OS
 .DS_Store
@@ -19,18 +32,15 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+*.user
+CMakeSettings.json
 
-# Tauri
-src-tauri/gen/
-
-# Coverage
-coverage/
-lcov.info
-tarpaulin-report.html
+# Secrets
+*.token
+credentials.json
+.env
+.env.*
+!.env.example
 
 # Logs
 *.log
-
-# Secrets — never commit
-*.token
-credentials.json
