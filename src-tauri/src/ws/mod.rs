@@ -318,8 +318,8 @@ mod tests {
     use super::*;
 
     fn make_test_orchestrator() -> OrchestratorHandle {
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(8);
-        OrchestratorHandle::new_test(cmd_tx)
+        let (handle, _rx) = crate::pipeline::create_orchestrator_channel();
+        handle
     }
 
     #[test]

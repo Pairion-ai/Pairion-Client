@@ -4,6 +4,21 @@ All notable changes to Pairion Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-04-18
+
+### Fixed
+
+- Tokio runtime initialization order: orchestrator spawn moved from sync
+  `run()` into `tauri::Builder::setup()` which runs after Tauri establishes
+  its async runtime. Previously panicked with "no reactor running" on launch.
+- Split `spawn_orchestrator` into `create_orchestrator_channel()` (sync, safe
+  before runtime) + `spawn_orchestrator_task()` (async, called in setup).
+
+### Added
+
+- `@tauri-apps/cli` and `@types/node` as dev dependencies for fresh clone support
+- `pnpm tauri build --debug` verified producing Pairion.app + .dmg
+
 ## [0.3.0] - 2026-04-17
 
 ### Added

@@ -25,8 +25,9 @@ use std::sync::Arc;
 /// Builds and runs the Tauri application.
 ///
 /// Initializes logging, generates or loads the device identity, reads the
-/// bearer token, sets up shared state, spawns the audio orchestrator and
-/// WebSocket client, and launches the Tauri window.
+/// bearer token, sets up shared state, and launches the Tauri window.
+/// The audio orchestrator and WebSocket client are spawned inside the
+/// `setup()` hook, which runs after Tauri has established its async runtime.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logs::init_tracing();
@@ -42,19 +43,18 @@ pub fn run() {
     let (sess_tx, sess_rx) = tokio::sync::watch::channel(state::SessionState::default());
     let sess_tx = Arc::new(sess_tx);
 
-    // Spawn the audio session orchestrator
-    let orchestrator = pipeline::spawn_orchestrator(outbound_tx.clone(), Arc::clone(&sess_tx));
+    // Create the orchestrator command channel (handle now, spawn task in setup())
+    let (orch_handle, orch_cmd_rx) = pipeline::create_orchestrator_channel();
 
     let app_state = AppState::new(
         device_id.clone(),
         app_config.ws_url.clone(),
-        outbound_tx,
-        orchestrator,
+        outbound_tx.clone(),
+        orch_handle.clone(),
         Arc::clone(&sess_tx),
         sess_rx,
     );
     let connection_tx = app_state.connection_tx.clone();
-    let orchestrator_for_ws = app_state.orchestrator.clone();
 
     // Read bearer token
     let keychain = secrets::NoopKeychainProvider;
@@ -77,14 +77,19 @@ pub fn run() {
             commands::send_text_message,
         ])
         .setup(move |_app| {
+            // Spawn the orchestrator task — now inside the Tauri runtime
+            let orch_outbound = outbound_tx;
+            let orch_sess = Arc::clone(&sess_tx);
+            pipeline::spawn_orchestrator_task(orch_cmd_rx, orch_outbound, orch_sess);
+
+            // Spawn the WebSocket client
             let config = app_config.clone();
             let dev_id = device_id.clone();
             let tok = token.clone();
             let conn_tx = Arc::clone(&connection_tx);
             let sess_tx_ws = Arc::clone(&sess_tx);
-            let orch_ws = orchestrator_for_ws.clone();
+            let orch_ws = orch_handle.clone();
 
-            // Spawn the WebSocket client on the Tokio runtime
             tauri::async_runtime::spawn(async move {
                 ws::run_ws_client(
                     config,

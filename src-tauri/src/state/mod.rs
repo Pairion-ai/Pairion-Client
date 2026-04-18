@@ -166,9 +166,8 @@ pub fn test_app_state(device_id: &str, server_url: &str) -> AppState {
     let (tx, _rx) = crate::ws::create_outbound_channel();
     let (sess_tx, sess_rx) = watch::channel(SessionState::default());
     let sess_tx = Arc::new(sess_tx);
-    // Create a dummy orchestrator handle — channel goes nowhere but doesn't panic
-    let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(8);
-    let orch = OrchestratorHandle::new_test(cmd_tx);
+    // Create orchestrator channel without spawning the task
+    let (orch, _cmd_rx) = crate::pipeline::create_orchestrator_channel();
     AppState::new(
         device_id.to_string(),
         server_url.to_string(),

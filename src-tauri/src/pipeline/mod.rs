@@ -99,21 +99,48 @@ struct ActiveSession {
     first_frame_sent: bool,
 }
 
-/// Spawns the orchestrator task and returns a handle for commanding it.
+/// Creates the orchestrator command channel without spawning the task.
 ///
-/// The orchestrator owns the audio pipeline state and coordinates
-/// capture → encode → WS send and WS receive → decode → playback.
+/// Returns the handle (for sending commands) and the receiver (for the task).
+/// Call [`spawn_orchestrator_task`] inside a live Tokio runtime to start
+/// the orchestrator's event loop. This two-step construction avoids the
+/// "no reactor running" panic that occurs when `tokio::spawn` is called
+/// during synchronous Tauri app initialization before the runtime exists.
+pub fn create_orchestrator_channel() -> (OrchestratorHandle, mpsc::Receiver<OrchestratorCommand>) {
+    let (cmd_tx, cmd_rx) = mpsc::channel::<OrchestratorCommand>(64);
+    (OrchestratorHandle { tx: cmd_tx }, cmd_rx)
+}
+
+/// Spawns the orchestrator event loop as a Tokio task.
+///
+/// Must be called from within a live Tokio runtime (e.g., inside
+/// `tauri::Builder::setup()`). Consumes the receiver half of the
+/// command channel created by [`create_orchestrator_channel`].
+pub fn spawn_orchestrator_task(
+    cmd_rx: mpsc::Receiver<OrchestratorCommand>,
+    outbound_tx: OutboundSender,
+    session_tx: Arc<watch::Sender<SessionState>>,
+) {
+    tauri::async_runtime::spawn(async move {
+        run_orchestrator(cmd_rx, outbound_tx, session_tx).await;
+    });
+}
+
+/// Legacy API: Creates the channel AND spawns the task in one call.
+///
+/// Only usable inside a live Tokio runtime. Retained for test convenience.
+#[cfg(test)]
 pub fn spawn_orchestrator(
     outbound_tx: OutboundSender,
     session_tx: Arc<watch::Sender<SessionState>>,
 ) -> OrchestratorHandle {
-    let (cmd_tx, cmd_rx) = mpsc::channel::<OrchestratorCommand>(64);
+    let (handle, cmd_rx) = create_orchestrator_channel();
 
     tokio::spawn(async move {
         run_orchestrator(cmd_rx, outbound_tx, session_tx).await;
     });
 
-    OrchestratorHandle { tx: cmd_tx }
+    handle
 }
 
 /// The orchestrator's main event loop.
