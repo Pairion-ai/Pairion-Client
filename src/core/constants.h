@@ -38,4 +38,16 @@ inline constexpr int kReconnectBackoffMs[] = {1000, 2000, 4000, 8000, 15000, 300
 /// Number of reconnect backoff steps.
 inline constexpr int kReconnectBackoffSteps = 6;
 
+/// PCM frame size in bytes (20 ms at 16 kHz, mono, 16-bit = 320 samples * 2 bytes).
+inline constexpr int kPcmFrameBytes = 640;
+
+/// Pre-roll buffer size in bytes (~200 ms at 16 kHz, 16-bit mono).
+inline constexpr int kPreRollBytes = 6400;
+
+/// Streaming timeout in milliseconds (safety cap for runaway streams).
+inline constexpr int kStreamingTimeoutMs = 30000;
+
+/// False-wake suppression window in milliseconds.
+inline constexpr int kWakeSuppresssionMs = 500;
+
 } // namespace pairion

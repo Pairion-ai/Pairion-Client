@@ -29,6 +29,11 @@ class ConnectionState : public QObject {
     Q_PROPERTY(QString serverVersion READ serverVersion NOTIFY serverVersionChanged)
     Q_PROPERTY(int reconnectAttempts READ reconnectAttempts NOTIFY reconnectAttemptsChanged)
     Q_PROPERTY(QStringList recentLogs READ recentLogs NOTIFY recentLogsChanged)
+    Q_PROPERTY(QString transcriptPartial READ transcriptPartial NOTIFY transcriptPartialChanged)
+    Q_PROPERTY(QString transcriptFinal READ transcriptFinal NOTIFY transcriptFinalChanged)
+    Q_PROPERTY(QString llmResponse READ llmResponse NOTIFY llmResponseChanged)
+    Q_PROPERTY(QString agentState READ agentState NOTIFY agentStateChanged)
+    Q_PROPERTY(QString voiceState READ voiceState NOTIFY voiceStateChanged)
 
   public:
     /**
@@ -75,6 +80,17 @@ class ConnectionState : public QObject {
      */
     QStringList recentLogs() const;
 
+    /// Partial transcript from STT (in progress).
+    QString transcriptPartial() const;
+    /// Final transcript from STT.
+    QString transcriptFinal() const;
+    /// Accumulated LLM response tokens.
+    QString llmResponse() const;
+    /// Current agent state (idle, listening, thinking, speaking).
+    QString agentState() const;
+    /// Current voice pipeline state (idle, awaiting_wake, streaming, ending_speech).
+    QString voiceState() const;
+
   public slots:
     /**
      * @brief Update the connection status.
@@ -106,6 +122,15 @@ class ConnectionState : public QObject {
      */
     void appendLog(const QString &entry);
 
+    void setTranscriptPartial(const QString &text);
+    void setTranscriptFinal(const QString &text);
+    void setAgentState(const QString &state);
+    void setVoiceState(const QString &state);
+    /// @brief Append an LLM token delta to the response accumulator.
+    void appendLlmToken(const QString &delta);
+    /// @brief Clear the accumulated LLM response.
+    void clearLlmResponse();
+
   signals:
     /// Emitted when connection status changes.
     void statusChanged();
@@ -117,6 +142,11 @@ class ConnectionState : public QObject {
     void reconnectAttemptsChanged();
     /// Emitted when the recent-logs list changes.
     void recentLogsChanged();
+    void transcriptPartialChanged();
+    void transcriptFinalChanged();
+    void llmResponseChanged();
+    void agentStateChanged();
+    void voiceStateChanged();
 
   private:
     Status m_status = Disconnected;
@@ -124,6 +154,11 @@ class ConnectionState : public QObject {
     QString m_serverVersion;
     int m_reconnectAttempts = 0;
     QStringList m_recentLogs;
+    QString m_transcriptPartial;
+    QString m_transcriptFinal;
+    QString m_llmResponse;
+    QString m_agentState;
+    QString m_voiceState;
 };
 
 } // namespace pairion::state

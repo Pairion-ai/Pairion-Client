@@ -1,0 +1,22 @@
+[
+    {
+        "name": "melspectrogram.onnx",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx",
+        "sha256": ""
+    },
+    {
+        "name": "embedding_model.onnx",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx",
+        "sha256": ""
+    },
+    {
+        "name": "hey_jarvis_v0.1.onnx",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_jarvis_v0.1.onnx",
+        "sha256": ""
+    },
+    {
+        "name": "silero_vad.onnx",
+        "url": "https://github.com/snakers4/silero-vad/raw/v5.1.2/src/silero_vad/data/silero_vad.onnx",
+        "sha256": ""
+    }
+]

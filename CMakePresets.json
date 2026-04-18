@@ -18,6 +18,7 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wpedantic -Werror",
+                "CMAKE_PREFIX_PATH": "/opt/homebrew",
                 "PAIRION_COVERAGE": "ON"
             }
         },

@@ -6,27 +6,41 @@ Native Qt 6 desktop client for the Pairion household AI assistant. Connects to P
 
 - CMake 3.25+
 - Ninja build system
-- Qt 6.6+ with modules: Core, Quick, Network, WebSockets, Test
+- Qt 6.6+ with modules: Core, Quick, Network, WebSockets, Multimedia, Test
+- libopus (for Opus audio encoding/decoding)
+- onnxruntime (for ONNX model inference — wake word and VAD)
 - clang-format (for code formatting checks)
 
 ### macOS
 
 ```bash
-brew install qt cmake ninja clang-format
+brew install qt cmake ninja clang-format opus onnxruntime
 ```
 
 ### Windows
 
-Install Qt 6.6+ via the online installer. Use MSVC 2022 with CMake and Ninja.
+Install Qt 6.6+ via the online installer. Install libopus and onnxruntime via vcpkg. Use MSVC 2022 with CMake and Ninja.
 
 ### Linux
 
-Install Qt 6.6+ via your distribution's package manager or `aqtinstall`. Install QtKeychain via your package manager or build from source.
+Install Qt 6.6+ via your distribution's package manager or `aqtinstall`. Install libopus and onnxruntime via your package manager or build from source.
 
 ```bash
 # Ubuntu/Debian
 sudo apt install qt6-base-dev qt6-declarative-dev qt6-websockets-dev \
-    cmake ninja-build clang-format lcov
+    libopus-dev libonnxruntime-dev cmake ninja-build clang-format lcov
+```
+
+## First-Run Model Download
+
+On first launch after connecting to the server, the client downloads ONNX models for wake word detection (openWakeWord) and voice activity detection (Silero VAD) to `~/Library/Application Support/Pairion/models/` (macOS). Models are SHA-256 verified and cached for subsequent launches.
+
+## Native Model Tests
+
+To enable tests that exercise real ONNX model files (requires models to be downloaded):
+
+```bash
+cmake --preset macos-debug -DPAIRION_CLIENT_NATIVE_TESTS=ON
 ```
 
 ## Build

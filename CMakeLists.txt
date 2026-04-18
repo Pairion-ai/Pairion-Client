@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(pairion VERSION 0.1.0 LANGUAGES CXX)
+project(pairion VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,25 +9,54 @@ set(CMAKE_AUTORCC ON)
 # --------------------------------------------------------------------------
 # Dependencies
 # --------------------------------------------------------------------------
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Quick Network WebSockets Test)
-# QtKeychain removed — using QSettings for device credential persistence
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Quick Network WebSockets Multimedia Test)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(Opus REQUIRED IMPORTED_TARGET opus)
+
+find_package(onnxruntime REQUIRED)
 
 # --------------------------------------------------------------------------
 # Library: pairion_core (all src/ except main.cpp — testable)
 # --------------------------------------------------------------------------
 add_library(pairion_core STATIC
+    # protocol
     src/protocol/envelope_codec.cpp
-    src/state/connection_state.cpp
-    src/ws/pairion_websocket_client.cpp
-    src/util/logger.cpp
+    src/protocol/binary_codec.cpp
+    # core
     src/core/device_identity.cpp
+    src/core/onnx_session.cpp
+    src/core/model_downloader.cpp
+    # state
+    src/state/connection_state.cpp
+    # settings
+    src/settings/settings.cpp
+    # audio
+    src/audio/pairion_opus_encoder.cpp
+    src/audio/pairion_opus_decoder.cpp
+    src/audio/pairion_audio_capture.cpp
+    # wake
+    src/wake/open_wakeword_detector.cpp
+    # vad
+    src/vad/silero_vad.cpp
+    # pipeline
+    src/pipeline/audio_session_orchestrator.cpp
+    # ws
+    src/ws/pairion_websocket_client.cpp
+    # util
+    src/util/logger.cpp
 )
-target_include_directories(pairion_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(pairion_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 target_link_libraries(pairion_core PUBLIC
     Qt6::Core
     Qt6::Quick
     Qt6::Network
     Qt6::WebSockets
+    Qt6::Multimedia
+    PkgConfig::Opus
+    onnxruntime::onnxruntime
 )
 
 # --------------------------------------------------------------------------
@@ -50,25 +79,27 @@ if(PAIRION_COVERAGE)
 endif()
 
 # --------------------------------------------------------------------------
+# Native ONNX model tests (opt-in)
+# --------------------------------------------------------------------------
+option(PAIRION_CLIENT_NATIVE_TESTS "Enable tests requiring real ONNX model files" OFF)
+if(PAIRION_CLIENT_NATIVE_TESTS)
+    target_compile_definitions(pairion_core PUBLIC PAIRION_CLIENT_NATIVE_TESTS=1)
+endif()
+
+# --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
 enable_testing()
 
-# Test: message codec
-add_executable(tst_message_codec
-    test/tst_message_codec.cpp
-)
+# M0 tests
+add_executable(tst_message_codec test/tst_message_codec.cpp)
 target_link_libraries(tst_message_codec PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_message_codec COMMAND tst_message_codec)
 
-# Test: log batching
-add_executable(tst_log_batching
-    test/tst_log_batching.cpp
-)
+add_executable(tst_log_batching test/tst_log_batching.cpp)
 target_link_libraries(tst_log_batching PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_log_batching COMMAND tst_log_batching)
 
-# Test: WebSocket client state machine
 add_executable(tst_ws_client_state_machine
     test/tst_ws_client_state_machine.cpp
     test/mock_server.cpp
@@ -76,14 +107,10 @@ add_executable(tst_ws_client_state_machine
 target_link_libraries(tst_ws_client_state_machine PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_ws_client_state_machine COMMAND tst_ws_client_state_machine)
 
-# Test: device identity
-add_executable(tst_device_identity
-    test/tst_device_identity.cpp
-)
+add_executable(tst_device_identity test/tst_device_identity.cpp)
 target_link_libraries(tst_device_identity PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_device_identity COMMAND tst_device_identity)
 
-# Test: integration
 add_executable(tst_integration
     test/tst_integration.cpp
     test/mock_server.cpp
@@ -91,10 +118,46 @@ add_executable(tst_integration
 target_link_libraries(tst_integration PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_integration COMMAND tst_integration)
 
+# M1 tests
+add_executable(tst_binary_frame test/tst_binary_frame.cpp)
+target_link_libraries(tst_binary_frame PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_binary_frame COMMAND tst_binary_frame)
+
+add_executable(tst_settings test/tst_settings.cpp)
+target_link_libraries(tst_settings PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_settings COMMAND tst_settings)
+
+add_executable(tst_ring_buffer test/tst_ring_buffer.cpp)
+target_link_libraries(tst_ring_buffer PRIVATE Qt6::Core Qt6::Test)
+target_include_directories(tst_ring_buffer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME tst_ring_buffer COMMAND tst_ring_buffer)
+
+add_executable(tst_opus_codec test/tst_opus_codec.cpp)
+target_link_libraries(tst_opus_codec PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_opus_codec COMMAND tst_opus_codec)
+
+add_executable(tst_wake_detector test/tst_wake_detector.cpp)
+target_link_libraries(tst_wake_detector PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_wake_detector COMMAND tst_wake_detector)
+
+add_executable(tst_silero_vad test/tst_silero_vad.cpp)
+target_link_libraries(tst_silero_vad PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_silero_vad COMMAND tst_silero_vad)
+
+add_executable(tst_model_downloader test/tst_model_downloader.cpp)
+target_link_libraries(tst_model_downloader PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_model_downloader COMMAND tst_model_downloader)
+
+add_executable(tst_audio_session_orchestrator
+    test/tst_audio_session_orchestrator.cpp
+    test/mock_server.cpp
+)
+target_link_libraries(tst_audio_session_orchestrator PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_audio_session_orchestrator COMMAND tst_audio_session_orchestrator)
+
 # --------------------------------------------------------------------------
 # Coverage target
 # --------------------------------------------------------------------------
-# Required line coverage percentage (CONVENTIONS §3: 100% mandatory)
 set(PAIRION_COVERAGE_THRESHOLD 100 CACHE STRING "Minimum required line coverage percentage")
 
 if(PAIRION_COVERAGE)

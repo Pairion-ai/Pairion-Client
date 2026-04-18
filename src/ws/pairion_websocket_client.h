@@ -72,6 +72,12 @@ class PairionWebSocketClient : public QObject {
      */
     void setHeartbeatIntervalMs(int ms);
 
+    /**
+     * @brief Send a raw binary frame over the WebSocket.
+     * @param data Binary data (4-byte stream ID prefix + payload).
+     */
+    void sendBinaryFrame(const QByteArray &data);
+
   signals:
     /// Emitted when a session is successfully opened.
     void sessionOpened(const QString &sessionId, const QString &serverVersion);
@@ -85,6 +91,14 @@ class PairionWebSocketClient : public QObject {
     void inboundMessage(const protocol::InboundMessage &msg);
     /// Emitted when a binary frame arrives (log + discard at M0).
     void binaryFrameReceived(const QByteArray &data);
+    /// Emitted when a TranscriptPartial message arrives.
+    void transcriptPartialReceived(const QString &text);
+    /// Emitted when a TranscriptFinal message arrives.
+    void transcriptFinalReceived(const QString &text);
+    /// Emitted when an AgentStateChange message arrives.
+    void agentStateReceived(const QString &state);
+    /// Emitted when an LlmTokenStream message arrives.
+    void llmTokenReceived(const QString &delta);
 
   private slots:
     void onConnected();

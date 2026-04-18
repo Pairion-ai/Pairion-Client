@@ -67,6 +67,10 @@ void PairionWebSocketClient::setHeartbeatIntervalMs(int ms) {
     m_heartbeatTimer.setInterval(ms);
 }
 
+void PairionWebSocketClient::sendBinaryFrame(const QByteArray &data) {
+    m_socket.sendBinaryMessage(data);
+}
+
 void PairionWebSocketClient::onConnected() {
     qCInfo(lcWs) << "Connected, sending DeviceIdentify";
     m_reconnectAttempt = 0;
@@ -123,6 +127,21 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
             } else if constexpr (std::is_same_v<T, protocol::ErrorMessage>) {
                 qCWarning(lcWs) << "Server error:" << m.code << m.message;
                 emit serverError(m.code, m.message);
+            } else if constexpr (std::is_same_v<T, protocol::TranscriptPartial>) {
+                m_connState->setTranscriptPartial(m.text);
+                emit transcriptPartialReceived(m.text);
+            } else if constexpr (std::is_same_v<T, protocol::TranscriptFinal>) {
+                m_connState->setTranscriptFinal(m.text);
+                emit transcriptFinalReceived(m.text);
+            } else if constexpr (std::is_same_v<T, protocol::AgentStateChange>) {
+                if (m.state == QLatin1String("thinking")) {
+                    m_connState->clearLlmResponse();
+                }
+                m_connState->setAgentState(m.state);
+                emit agentStateReceived(m.state);
+            } else if constexpr (std::is_same_v<T, protocol::LlmTokenStream>) {
+                m_connState->appendLlmToken(m.delta);
+                emit llmTokenReceived(m.delta);
             }
         },
         msg);

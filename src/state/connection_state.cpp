@@ -65,4 +65,64 @@ void ConnectionState::appendLog(const QString &entry) {
     emit recentLogsChanged();
 }
 
+QString ConnectionState::transcriptPartial() const {
+    return m_transcriptPartial;
+}
+
+QString ConnectionState::transcriptFinal() const {
+    return m_transcriptFinal;
+}
+
+QString ConnectionState::llmResponse() const {
+    return m_llmResponse;
+}
+
+QString ConnectionState::agentState() const {
+    return m_agentState;
+}
+
+QString ConnectionState::voiceState() const {
+    return m_voiceState;
+}
+
+void ConnectionState::setTranscriptPartial(const QString &text) {
+    if (m_transcriptPartial != text) {
+        m_transcriptPartial = text;
+        emit transcriptPartialChanged();
+    }
+}
+
+void ConnectionState::setTranscriptFinal(const QString &text) {
+    if (m_transcriptFinal != text) {
+        m_transcriptFinal = text;
+        emit transcriptFinalChanged();
+    }
+}
+
+void ConnectionState::setAgentState(const QString &state) {
+    if (m_agentState != state) {
+        m_agentState = state;
+        emit agentStateChanged();
+    }
+}
+
+void ConnectionState::setVoiceState(const QString &state) {
+    if (m_voiceState != state) {
+        m_voiceState = state;
+        emit voiceStateChanged();
+    }
+}
+
+void ConnectionState::appendLlmToken(const QString &delta) {
+    m_llmResponse.append(delta);
+    emit llmResponseChanged();
+}
+
+void ConnectionState::clearLlmResponse() {
+    if (!m_llmResponse.isEmpty()) {
+        m_llmResponse.clear();
+        emit llmResponseChanged();
+    }
+}
+
 } // namespace pairion::state
