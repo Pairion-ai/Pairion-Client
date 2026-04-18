@@ -1,15 +1,14 @@
 //! Wake-word detection for the Pairion Client.
 //!
-//! Provides a trait-based abstraction for wake-word detection, with a
-//! threshold-based implementation that processes audio frames and fires
-//! when the wake phrase "Hey Pairion" is detected with sufficient confidence.
-//!
-//! In M1, wake-word detection is implemented as a simple energy-based
-//! detector for development testing. The full openWakeWord ONNX model
-//! integration is wired when model files are available from the Server.
+//! Provides real wake-word detection using the openWakeWord three-model
+//! ONNX pipeline: melspectrogram → embedding → wake-word scorer.
+//! M1 uses the "hey jarvis" pre-trained model as a placeholder until
+//! a custom "Hey Pairion" model is trained in a later milestone.
 //!
 //! False-wake suppression: a wake event within 500ms of a previous
 //! one is suppressed.
+
+pub mod models;
 
 use std::time::Instant;
 
@@ -37,15 +36,233 @@ pub trait WakeWordDetector: Send {
     fn set_sensitivity(&mut self, sensitivity: f64);
 }
 
+/// openWakeWord three-model ONNX pipeline detector.
+///
+/// Pipeline: audio (1280 samples at 16kHz = 80ms chunks)
+///   → melspectrogram model → mel features
+///   → embedding model → audio embeddings
+///   → hey_jarvis model → wake probability score
+///
+/// The "hey jarvis" model is the M1 placeholder. The internal comment
+/// notes this; the actual wake phrase used at M1 is "Hey Jarvis".
+pub struct OpenWakeWordDetector {
+    mel_session: ort::session::Session,
+    emb_session: ort::session::Session,
+    ww_session: ort::session::Session,
+    /// Detection threshold (default 0.5 per openWakeWord recommendation).
+    threshold: f64,
+    /// Buffer for accumulating audio samples (1280 per chunk).
+    audio_buffer: Vec<f32>,
+    /// Ring buffer of recent embeddings for the wake-word model (needs 16 frames).
+    embedding_buffer: Vec<Vec<f32>>,
+    /// Last detection time for false-wake suppression.
+    last_detection: Option<Instant>,
+    /// Suppression window in ms.
+    suppression_ms: u64,
+}
+
+impl OpenWakeWordDetector {
+    /// Creates a new openWakeWord detector, loading all three ONNX models.
+    ///
+    /// Models are expected at `~/Library/Application Support/Pairion/models/openwakeword/`.
+    /// Call [`models::ensure_model`] before constructing this detector.
+    pub fn new(
+        mel_path: &std::path::Path,
+        emb_path: &std::path::Path,
+        ww_path: &std::path::Path,
+        threshold: f64,
+    ) -> Result<Self, WakeWordError> {
+        let start = Instant::now();
+
+        let mel_session = ort::session::Session::builder()
+            .map_err(|e| WakeWordError::ModelLoad(format!("mel builder: {e}")))?
+            .commit_from_file(mel_path)
+            .map_err(|e| WakeWordError::ModelLoad(format!("melspectrogram: {e}")))?;
+
+        let emb_session = ort::session::Session::builder()
+            .map_err(|e| WakeWordError::ModelLoad(format!("emb builder: {e}")))?
+            .commit_from_file(emb_path)
+            .map_err(|e| WakeWordError::ModelLoad(format!("embedding: {e}")))?;
+
+        let ww_session = ort::session::Session::builder()
+            .map_err(|e| WakeWordError::ModelLoad(format!("ww builder: {e}")))?
+            .commit_from_file(ww_path)
+            .map_err(|e| WakeWordError::ModelLoad(format!("hey_jarvis: {e}")))?;
+
+        tracing::info!(
+            load_time_ms = start.elapsed().as_millis(),
+            "openWakeWord models loaded"
+        );
+
+        Ok(Self {
+            mel_session,
+            emb_session,
+            ww_session,
+            threshold,
+            audio_buffer: Vec::with_capacity(1280),
+            embedding_buffer: Vec::new(),
+            last_detection: None,
+            suppression_ms: 500,
+        })
+    }
+
+    /// Loads all models from the default cache directory, downloading if needed.
+    pub fn load_default(threshold: f64) -> Result<Self, WakeWordError> {
+        let mel_path = models::ensure_model(
+            "melspectrogram.onnx",
+            models::EXPECTED_SHA256_MELSPECTROGRAM,
+        )
+        .map_err(|e| WakeWordError::ModelLoad(format!("{e}")))?;
+
+        let emb_path =
+            models::ensure_model("embedding_model.onnx", models::EXPECTED_SHA256_EMBEDDING)
+                .map_err(|e| WakeWordError::ModelLoad(format!("{e}")))?;
+
+        let ww_path =
+            models::ensure_model("hey_jarvis_v0.1.onnx", models::EXPECTED_SHA256_HEY_JARVIS)
+                .map_err(|e| WakeWordError::ModelLoad(format!("{e}")))?;
+
+        Self::new(&mel_path, &emb_path, &ww_path, threshold)
+    }
+
+    /// Runs the three-model inference pipeline on a 1280-sample audio chunk.
+    fn run_pipeline(&mut self, audio_chunk: &[f32]) -> Result<f64, WakeWordError> {
+        use ort::value::TensorRef;
+
+        // Step 1: melspectrogram — input: [1, 1280], output: [time, 1, dim, 32]
+        let mel_input =
+            ndarray::Array2::from_shape_vec((1, audio_chunk.len()), audio_chunk.to_vec())
+                .map_err(|e| WakeWordError::Inference(format!("mel input: {e}")))?;
+        let mel_ref = TensorRef::from_array_view(&mel_input)
+            .map_err(|e| WakeWordError::Inference(format!("mel tensor: {e}")))?;
+
+        let mel_outputs = self
+            .mel_session
+            .run(ort::inputs![mel_ref])
+            .map_err(|e| WakeWordError::Inference(format!("mel run: {e}")))?;
+
+        let (mel_shape, mel_data) = mel_outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| WakeWordError::Inference(format!("mel extract: {e}")))?;
+
+        // mel output shape: [time, 1, dim, 32] — use time dim for embedding
+        let emb_height = mel_shape[0] as usize;
+        let emb_width = 32usize;
+        let needed = emb_height * emb_width;
+        if mel_data.len() < needed {
+            return Ok(0.0);
+        }
+
+        // Step 2: embedding — input: [1, height, 32, 1], output: [1, 1, 1, 96]
+        let emb_input = ndarray::Array4::from_shape_vec(
+            (1, emb_height, emb_width, 1),
+            mel_data[..needed].to_vec(),
+        )
+        .map_err(|e| WakeWordError::Inference(format!("emb reshape: {e}")))?;
+        let emb_ref = TensorRef::from_array_view(&emb_input)
+            .map_err(|e| WakeWordError::Inference(format!("emb tensor: {e}")))?;
+
+        let emb_outputs = self
+            .emb_session
+            .run(ort::inputs![emb_ref])
+            .map_err(|e| WakeWordError::Inference(format!("emb run: {e}")))?;
+
+        let (_emb_shape, emb_data) = emb_outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| WakeWordError::Inference(format!("emb extract: {e}")))?;
+
+        let embedding: Vec<f32> = emb_data.to_vec();
+
+        // Step 3: accumulate embeddings (need 16 frames for wake-word model)
+        self.embedding_buffer.push(embedding);
+        if self.embedding_buffer.len() > 16 {
+            self.embedding_buffer.remove(0);
+        }
+        if self.embedding_buffer.len() < 16 {
+            return Ok(0.0);
+        }
+
+        // Build [1, 16, 96] tensor from the 16 most recent embeddings
+        let mut ww_data = Vec::with_capacity(16 * 96);
+        for emb in &self.embedding_buffer {
+            if emb.len() >= 96 {
+                ww_data.extend_from_slice(&emb[..96]);
+            } else {
+                ww_data.extend_from_slice(emb);
+                ww_data.resize(ww_data.len() + (96 - emb.len()), 0.0);
+            }
+        }
+        let ww_input = ndarray::Array3::from_shape_vec((1, 16, 96), ww_data)
+            .map_err(|e| WakeWordError::Inference(format!("ww input: {e}")))?;
+        let ww_ref = TensorRef::from_array_view(&ww_input)
+            .map_err(|e| WakeWordError::Inference(format!("ww tensor: {e}")))?;
+
+        let ww_outputs = self
+            .ww_session
+            .run(ort::inputs![ww_ref])
+            .map_err(|e| WakeWordError::Inference(format!("ww run: {e}")))?;
+
+        let (_ww_shape, ww_data) = ww_outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| WakeWordError::Inference(format!("ww extract: {e}")))?;
+
+        Ok(ww_data.first().copied().unwrap_or(0.0) as f64)
+    }
+}
+
+impl WakeWordDetector for OpenWakeWordDetector {
+    fn process(&mut self, samples: &[f32]) -> WakeWordResult {
+        self.audio_buffer.extend_from_slice(samples);
+
+        // Process in 1280-sample chunks (80ms at 16kHz)
+        while self.audio_buffer.len() >= 1280 {
+            let chunk: Vec<f32> = self.audio_buffer.drain(..1280).collect();
+
+            match self.run_pipeline(&chunk) {
+                Ok(score) => {
+                    if score >= self.threshold {
+                        // False-wake suppression
+                        if let Some(last) = self.last_detection {
+                            if last.elapsed().as_millis() < self.suppression_ms as u128 {
+                                continue;
+                            }
+                        }
+                        self.last_detection = Some(Instant::now());
+                        return WakeWordResult::Detected { confidence: score };
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Wake-word inference error");
+                }
+            }
+        }
+
+        WakeWordResult::None
+    }
+
+    fn reset(&mut self) {
+        self.audio_buffer.clear();
+        self.embedding_buffer.clear();
+        self.last_detection = None;
+    }
+
+    fn sensitivity(&self) -> f64 {
+        self.threshold
+    }
+
+    fn set_sensitivity(&mut self, sensitivity: f64) {
+        self.threshold = sensitivity.clamp(0.0, 1.0);
+    }
+}
+
 /// Energy-based wake-word detector for development testing.
 ///
 /// Fires when the audio energy exceeds a threshold, simulating wake-word
-/// detection. This is replaced by the ONNX-based openWakeWord detector
-/// when model files are available.
+/// detection. NOT the default runtime path — use [`OpenWakeWordDetector`]
+/// for production.
 pub struct EnergyWakeDetector {
     sensitivity: f64,
     last_detection: Option<Instant>,
-    /// Minimum interval between detections (false-wake suppression).
     suppression_ms: u64,
 }
 
@@ -61,7 +278,6 @@ impl EnergyWakeDetector {
 
     /// Returns the energy threshold derived from sensitivity.
     fn threshold(&self) -> f32 {
-        // Higher sensitivity → lower threshold → easier to trigger
         (1.0 - self.sensitivity as f32) * 0.1
     }
 }
@@ -77,19 +293,15 @@ impl WakeWordDetector for EnergyWakeDetector {
         if samples.is_empty() {
             return WakeWordResult::None;
         }
-
-        // Compute RMS energy
         let energy: f32 =
             (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
 
         if energy > self.threshold() {
-            // False-wake suppression
             if let Some(last) = self.last_detection {
                 if last.elapsed().as_millis() < self.suppression_ms as u128 {
                     return WakeWordResult::None;
                 }
             }
-
             let confidence = (energy / 0.5).min(1.0) as f64;
             self.last_detection = Some(Instant::now());
             WakeWordResult::Detected { confidence }
@@ -139,6 +351,20 @@ impl WakeWordDetector for NeverWakeDetector {
     fn set_sensitivity(&mut self, _sensitivity: f64) {}
 }
 
+/// Errors from wake-word detection.
+#[derive(Debug, thiserror::Error)]
+pub enum WakeWordError {
+    /// Failed to load an ONNX model.
+    #[error("model load error: {0}")]
+    ModelLoad(String),
+    /// Inference failed.
+    #[error("inference error: {0}")]
+    Inference(String),
+    /// ORT error.
+    #[error("ort error: {0}")]
+    Ort(#[from] ort::Error),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,9 +387,7 @@ mod tests {
         let mut det = EnergyWakeDetector::new(0.6);
         let loud = vec![0.5f32; 320];
         match det.process(&loud) {
-            WakeWordResult::Detected { confidence } => {
-                assert!(confidence > 0.0);
-            }
+            WakeWordResult::Detected { confidence } => assert!(confidence > 0.0),
             WakeWordResult::None => panic!("Expected detection on loud audio"),
         }
     }
@@ -172,13 +396,10 @@ mod tests {
     fn test_energy_detector_false_wake_suppression() {
         let mut det = EnergyWakeDetector::new(0.6);
         let loud = vec![0.5f32; 320];
-
-        // First detection should succeed
         assert!(matches!(
             det.process(&loud),
             WakeWordResult::Detected { .. }
         ));
-        // Immediate second detection should be suppressed
         assert_eq!(det.process(&loud), WakeWordResult::None);
     }
 
@@ -188,7 +409,6 @@ mod tests {
         let loud = vec![0.5f32; 320];
         let _ = det.process(&loud);
         det.reset();
-        // After reset, should detect again
         assert!(matches!(
             det.process(&loud),
             WakeWordResult::Detected { .. }
@@ -232,5 +452,27 @@ mod tests {
     fn test_never_wake_detector() {
         let mut det = NeverWakeDetector;
         assert_eq!(det.process(&[1.0; 320]), WakeWordResult::None);
+    }
+
+    #[test]
+    fn test_openwakeword_model_loading() {
+        // Only runs if models are downloaded
+        let mel_path = models::model_cache_dir().join("melspectrogram.onnx");
+        if mel_path.exists() {
+            let result = OpenWakeWordDetector::load_default(0.5);
+            assert!(result.is_ok(), "Model loading failed");
+        }
+    }
+
+    #[test]
+    fn test_openwakeword_silence_no_detection() {
+        let mel_path = models::model_cache_dir().join("melspectrogram.onnx");
+        if mel_path.exists() {
+            let mut det = OpenWakeWordDetector::load_default(0.5).unwrap();
+            // Feed 2 seconds of silence (32000 samples at 16kHz)
+            let silence = vec![0.0f32; 32000];
+            let result = det.process(&silence);
+            assert_eq!(result, WakeWordResult::None);
+        }
     }
 }

@@ -22,6 +22,7 @@ See the [Pairion Charter](https://github.com/your-org/Pairion-Server/blob/main/P
 - **Tauri CLI** (`cargo install tauri-cli --version "^2"`)
 - **libopus** (`brew install opus`) — required for Opus audio encoding/decoding
 - **pkg-config** (`brew install pkg-config`) — required to locate libopus
+- **Network access** on first run — ONNX models (~5MB total) are downloaded from GitHub and cached locally at `~/Library/Application Support/Pairion/models/`
 
 ### Install & Run
 

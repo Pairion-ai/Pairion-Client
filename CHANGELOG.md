@@ -4,6 +4,20 @@ All notable changes to Pairion Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.2] - 2026-04-17
+
+### Added
+
+- Real openWakeWord 3-model ONNX pipeline: melspectrogram → embedding → hey_jarvis
+- OpenWakeWordDetector loads all 3 models from ~/Library/Application Support/Pairion/models/
+- Model download-on-first-run with SHA-256 verification for all 4 ONNX files
+- Real Silero VAD ONNX model integration with stateful LSTM inference
+- SileroVad processes 512-sample chunks at 16kHz, 800ms silence threshold
+- Model management module (wake/models.rs) with ensure_model(), compute_sha256()
+- docs/MODELS.md documenting all model URLs, SHA-256s, licenses, and versions
+- ndarray 0.17 (matching ort's requirements)
+- ort ndarray feature enabled for tensor interop
+
 ## [0.2.1] - 2026-04-17
 
 ### Added
