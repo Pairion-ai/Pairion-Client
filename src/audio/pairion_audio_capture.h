@@ -4,10 +4,14 @@
  * @file pairion_audio_capture.h
  * @brief Microphone capture at 16 kHz mono 16-bit via QAudioSource.
  *
- * Wraps QAudioSource, runs on a dedicated worker thread via moveToThread,
- * and emits 20 ms PCM frames (640 bytes) through the audioFrameAvailable signal.
- * Uses an internal accumulator to produce exact-size frames from QAudioSource's
- * variable-size push cadence.
+ * Wraps QAudioSource and emits 20 ms PCM frames (640 bytes) through the
+ * audioFrameAvailable signal. Uses an internal accumulator to produce
+ * exact-size frames from QAudioSource's variable-size push cadence.
+ *
+ * Threading: this object MUST live on the main thread because QAudioSource
+ * and QMediaDevices require main-thread access on macOS (AVFoundation
+ * backend). Downstream consumers (encoder, wake, VAD) on worker threads
+ * receive frames via Qt::QueuedConnection automatically.
  */
 
 #include <QAudioSource>
@@ -20,8 +24,9 @@ namespace pairion::audio {
 /**
  * @brief Audio capture QObject producing 20 ms PCM frames.
  *
- * Deploy on a worker thread via moveToThread. Call start()/stop() via
- * queued signal/slot connections from the main thread.
+ * Must live on the main thread. Call start()/stop() directly or via signal/slot.
+ * Downstream consumers on worker threads receive audioFrameAvailable via
+ * queued connections.
  */
 class PairionAudioCapture : public QObject {
     Q_OBJECT
@@ -38,7 +43,7 @@ class PairionAudioCapture : public QObject {
     ~PairionAudioCapture() override;
 
   public slots:
-    /// @brief Start capturing audio.
+    /// @brief Start capturing audio from the microphone.
     void start();
     /// @brief Stop capturing audio.
     void stop();

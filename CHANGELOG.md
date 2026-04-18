@@ -4,6 +4,16 @@ All notable changes to Pairion-Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - 2026-04-18
+
+### Fixed
+
+- Audio capture crash on macOS: QAudioSource now constructed on main thread (was incorrectly on worker thread via moveToThread, causing crash when macOS mic permission grant callback crossed thread boundaries)
+- Microphone permission requested at startup via QPermission API before any audio device access
+- WebSocket connection proceeds regardless of mic permission state — debug panel shows Connected even when mic is denied
+- Model manifest SHA-256 hashes populated with real values for all 4 ONNX models
+- ModelDownloader now rejects empty SHA-256 hash strings with a clear error (was silently accepting)
+
 ## [0.2.0] - 2026-04-18
 
 ### Added

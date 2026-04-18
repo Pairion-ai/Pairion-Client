@@ -31,6 +31,10 @@ sudo apt install qt6-base-dev qt6-declarative-dev qt6-websockets-dev \
     libopus-dev libonnxruntime-dev cmake ninja-build clang-format lcov
 ```
 
+## Microphone Permission
+
+On macOS, the client requests microphone access at launch via the QPermission API. If permission is denied, the debug panel shows an error message and voice interaction is unavailable — but the WebSocket connection and debug panel remain functional.
+
 ## First-Run Model Download
 
 On first launch after connecting to the server, the client downloads ONNX models for wake word detection (openWakeWord) and voice activity detection (Silero VAD) to `~/Library/Application Support/Pairion/models/` (macOS). Models are SHA-256 verified and cached for subsequent launches.

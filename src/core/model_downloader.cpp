@@ -84,7 +84,9 @@ QList<ModelDownloader::ModelEntry> ModelDownloader::loadManifest() {
 
 bool ModelDownloader::verifyFile(const QString &path, const QByteArray &expectedSha256) {
     if (expectedSha256.isEmpty()) {
-        return true; // No hash to verify — accept cached file
+        qCWarning(lcModelDl) << "Empty SHA-256 hash for" << path
+                             << "— rejecting (all manifest entries must have hashes)";
+        return false;
     }
 
     QFile file(path);

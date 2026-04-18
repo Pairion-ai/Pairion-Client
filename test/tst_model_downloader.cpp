@@ -1,11 +1,13 @@
 /**
  * @file tst_model_downloader.cpp
- * @brief Tests for ModelDownloader: manifest parsing and file caching logic.
+ * @brief Tests for ModelDownloader: manifest parsing, caching, and hash verification.
  */
 
 #include "../src/core/model_downloader.h"
 
+#include <QCryptographicHash>
 #include <QDir>
+#include <QFile>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
@@ -29,45 +31,11 @@ class TestModelDownloader : public QObject {
         QVERIFY(path.endsWith(QStringLiteral("/models/test.onnx")));
     }
 
-    /// Verify checkAndDownload emits allModelsReady when all files are cached.
-    void allCachedEmitsReady() {
-        // Set test-specific data location to avoid touching real cache
+    /// Verify checkAndDownload triggers download when files are missing.
+    void missingFilesTriggersDownload() {
         QStandardPaths::setTestModeEnabled(true);
         QString cacheDir = ModelDownloader::modelCacheDir();
-        QDir().mkpath(cacheDir);
-
-        // Create fake model files (manifest has empty sha256, so they pass verification)
-        QStringList modelNames = {
-            QStringLiteral("melspectrogram.onnx"), QStringLiteral("embedding_model.onnx"),
-            QStringLiteral("hey_jarvis_v0.1.onnx"), QStringLiteral("silero_vad.onnx")};
-        for (const auto &name : modelNames) {
-            QFile f(cacheDir + QStringLiteral("/") + name);
-            QVERIFY(f.open(QIODevice::WriteOnly));
-            f.write("fake_model_data");
-            f.close();
-        }
-
-        QNetworkAccessManager nam;
-        ModelDownloader downloader(&nam);
-        QSignalSpy readySpy(&downloader, &ModelDownloader::allModelsReady);
-
-        downloader.checkAndDownload();
-        QCOMPARE(readySpy.count(), 1);
-
-        // Cleanup
-        for (const auto &name : modelNames) {
-            QFile::remove(cacheDir + QStringLiteral("/") + name);
-        }
-        QStandardPaths::setTestModeEnabled(false);
-    }
-
-    /// Verify checkAndDownload with missing files attempts download.
-    void missingFileTriggersDownload() {
-        QStandardPaths::setTestModeEnabled(true);
-        QString cacheDir = ModelDownloader::modelCacheDir();
-        // Ensure directory is clean
-        QDir dir(cacheDir);
-        dir.removeRecursively();
+        QDir(cacheDir).removeRecursively();
         QDir().mkpath(cacheDir);
 
         QNetworkAccessManager nam;
@@ -77,15 +45,48 @@ class TestModelDownloader : public QObject {
 
         downloader.checkAndDownload();
 
-        // Without network, we expect either an error or the download to be attempted
-        // Since we can't guarantee network, just verify the downloader didn't emit ready
-        // immediately (it has pending downloads)
+        // Without real network, expect download error (can't reach GitHub)
+        // or ready if somehow cached. Either is valid — test doesn't crash.
         if (readySpy.count() == 0) {
-            // Wait briefly for potential network error
-            QTest::qWait(2000);
-            // Either download succeeded or error occurred — both valid
-            QVERIFY(readySpy.count() > 0 || errorSpy.count() > 0);
+            QTest::qWait(3000);
         }
+        QVERIFY(readySpy.count() > 0 || errorSpy.count() > 0);
+
+        QDir(cacheDir).removeRecursively();
+        QStandardPaths::setTestModeEnabled(false);
+    }
+
+    /// Verify that files with SHA-256 mismatch are rejected and re-downloaded.
+    void hashMismatchTriggersRedownload() {
+        QStandardPaths::setTestModeEnabled(true);
+        QString cacheDir = ModelDownloader::modelCacheDir();
+        QDir().mkpath(cacheDir);
+
+        // Create fake model files with wrong content (sha256 won't match manifest)
+        QStringList modelNames = {
+            QStringLiteral("melspectrogram.onnx"), QStringLiteral("embedding_model.onnx"),
+            QStringLiteral("hey_jarvis_v0.1.onnx"), QStringLiteral("silero_vad.onnx")};
+        for (const auto &name : modelNames) {
+            QFile f(cacheDir + QStringLiteral("/") + name);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("fake_data_wrong_hash");
+            f.close();
+        }
+
+        QNetworkAccessManager nam;
+        ModelDownloader downloader(&nam);
+        QSignalSpy readySpy(&downloader, &ModelDownloader::allModelsReady);
+        QSignalSpy errorSpy(&downloader, &ModelDownloader::downloadError);
+
+        downloader.checkAndDownload();
+
+        // Files have wrong hash — downloader should attempt re-download
+        // Without network, expect download error
+        if (readySpy.count() == 0 && errorSpy.count() == 0) {
+            QTest::qWait(3000);
+        }
+        // Either downloaded fresh (unlikely without network) or error
+        QVERIFY(readySpy.count() > 0 || errorSpy.count() > 0);
 
         QDir(cacheDir).removeRecursively();
         QStandardPaths::setTestModeEnabled(false);

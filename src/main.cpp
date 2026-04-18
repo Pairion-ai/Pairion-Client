@@ -2,9 +2,17 @@
  * @file main.cpp
  * @brief Entry point for the Pairion Client application.
  *
- * Creates the Qt application, initializes device identity, settings, logging,
- * model downloader, audio pipeline, and QML UI. Wires the full M1 upstream
- * pipeline: capture → wake → VAD → encode → WebSocket.
+ * Creates the Qt application, requests microphone permission via QPermission API,
+ * initializes device identity, settings, logging, model downloader, audio pipeline,
+ * and QML UI. Wires the full M1 upstream pipeline: capture → wake → VAD →
+ * encode → WebSocket.
+ *
+ * Threading model:
+ *   - Main thread: QML, PairionAudioCapture (QAudioSource requires main thread on macOS),
+ *     ConnectionState, WebSocket client, orchestrator
+ *   - Encoder thread: PairionOpusEncoder (CPU-bound Opus encoding)
+ *   - Wake/VAD process on main thread via signal delivery (mock-heavy at M1;
+ *     move to worker thread at M2 if profiling shows main-thread pressure)
  */
 
 #include "audio/pairion_audio_capture.h"
@@ -23,8 +31,67 @@
 
 #include <QGuiApplication>
 #include <QNetworkAccessManager>
+#include <QPermissions>
 #include <QQmlApplicationEngine>
 #include <QThread>
+
+/**
+ * @brief Initialize the audio pipeline after mic permission is granted and models are ready.
+ *
+ * Creates ONNX sessions, wake detector, VAD, orchestrator, and wires signal connections.
+ * Called from the allModelsReady callback on the main thread.
+ */
+static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudioCapture *capture,
+                              pairion::audio::PairionOpusEncoder *encoder,
+                              pairion::ws::PairionWebSocketClient *wsClient,
+                              pairion::state::ConnectionState *connState,
+                              pairion::settings::Settings *settings, QThread *encoderThread) {
+    QString modelDir = pairion::core::ModelDownloader::modelCacheDir();
+    pairion::core::OnnxInferenceSession *melSession = nullptr;
+    pairion::core::OnnxInferenceSession *embSession = nullptr;
+    pairion::core::OnnxInferenceSession *clsSession = nullptr;
+    pairion::core::OnnxInferenceSession *vadSession = nullptr;
+
+    try {
+        melSession = new pairion::core::OrtInferenceSession(
+            (modelDir + QStringLiteral("/melspectrogram.onnx")).toStdString());
+        embSession = new pairion::core::OrtInferenceSession(
+            (modelDir + QStringLiteral("/embedding_model.onnx")).toStdString());
+        clsSession = new pairion::core::OrtInferenceSession(
+            (modelDir + QStringLiteral("/hey_jarvis_v0.1.onnx")).toStdString());
+        vadSession = new pairion::core::OrtInferenceSession(
+            (modelDir + QStringLiteral("/silero_vad.onnx")).toStdString());
+    } catch (const std::exception &e) {
+        qCritical() << "Failed to load ONNX models:" << e.what();
+        connState->appendLog(QStringLiteral("[ERROR] Failed to load ONNX models: %1")
+                                 .arg(QString::fromUtf8(e.what())));
+        return;
+    }
+
+    auto *wakeDetector = new pairion::wake::OpenWakewordDetector(melSession, embSession, clsSession,
+                                                                 settings->wakeThreshold(), app);
+    auto *vad = new pairion::vad::SileroVad(vadSession, settings->vadThreshold(),
+                                            settings->vadSilenceEndMs(), app);
+
+    auto *orchestrator = new pairion::pipeline::AudioSessionOrchestrator(
+        capture, encoder, wakeDetector, vad, wsClient, connState, app);
+
+    // Connect capture → encoder (cross-thread, queued automatically)
+    QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable, encoder,
+                     &pairion::audio::PairionOpusEncoder::encodePcmFrame);
+    // Connect capture → wake detector (same thread, direct)
+    QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable,
+                     wakeDetector, &pairion::wake::OpenWakewordDetector::processPcmFrame);
+    // Connect capture → VAD (same thread, direct)
+    QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable, vad,
+                     &pairion::vad::SileroVad::processPcmFrame);
+
+    encoderThread->start();
+    capture->start();
+    orchestrator->startListening();
+
+    qInfo() << "Audio pipeline started";
+}
 
 int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
@@ -52,15 +119,14 @@ int main(int argc, char *argv[]) {
                          logger->setSessionId(sessionId);
                      });
 
-    // Audio pipeline components (created on main thread, moved to workers later)
-    auto *capture = new pairion::audio::PairionAudioCapture();
+    // Audio capture lives on main thread (macOS QAudioSource requires it).
+    // Encoder lives on a worker thread (CPU-bound Opus encoding).
+    auto *capture = new pairion::audio::PairionAudioCapture(&app);
     auto *encoder = new pairion::audio::PairionOpusEncoder();
 
-    // Worker threads
-    auto *audioThread = new QThread(&app);
-    audioThread->setObjectName(QStringLiteral("AudioThread"));
-    capture->moveToThread(audioThread);
-    encoder->moveToThread(audioThread);
+    auto *encoderThread = new QThread(&app);
+    encoderThread->setObjectName(QStringLiteral("EncoderThread"));
+    encoder->moveToThread(encoderThread);
 
     // QML singletons
     qmlRegisterSingletonInstance("Pairion", 1, 0, "ConnectionState", connState);
@@ -71,58 +137,66 @@ int main(int argc, char *argv[]) {
 
     // Model downloader — triggers pipeline start when ready
     auto *modelDownloader = new pairion::core::ModelDownloader(nam, &app);
+    bool micPermissionGranted = false;
+    bool modelsReady = false;
 
-    QObject::connect(
-        modelDownloader, &pairion::core::ModelDownloader::allModelsReady, &app,
-        [&app, capture, encoder, wsClient, connState, settings, audioThread]() {
-            qInfo() << "All models ready, starting audio pipeline";
+    // Lambda to start pipeline when BOTH mic permission and models are ready
+    auto tryStartPipeline = [&app, capture, encoder, wsClient, connState, settings, encoderThread,
+                             &micPermissionGranted, &modelsReady]() {
+        if (micPermissionGranted && modelsReady) {
+            initAudioPipeline(&app, capture, encoder, wsClient, connState, settings, encoderThread);
+        }
+    };
 
-            // Create ONNX sessions for wake word + VAD
-            QString modelDir = pairion::core::ModelDownloader::modelCacheDir();
-            pairion::core::OnnxInferenceSession *melSession = nullptr;
-            pairion::core::OnnxInferenceSession *embSession = nullptr;
-            pairion::core::OnnxInferenceSession *clsSession = nullptr;
-            pairion::core::OnnxInferenceSession *vadSession = nullptr;
+    // Request microphone permission via QPermission API (must happen on main thread)
+    QMicrophonePermission micPermission;
+    auto permissionStatus = app.checkPermission(micPermission);
 
-            try {
-                melSession = new pairion::core::OrtInferenceSession(
-                    (modelDir + QStringLiteral("/melspectrogram.onnx")).toStdString());
-                embSession = new pairion::core::OrtInferenceSession(
-                    (modelDir + QStringLiteral("/embedding_model.onnx")).toStdString());
-                clsSession = new pairion::core::OrtInferenceSession(
-                    (modelDir + QStringLiteral("/hey_jarvis_v0.1.onnx")).toStdString());
-                vadSession = new pairion::core::OrtInferenceSession(
-                    (modelDir + QStringLiteral("/silero_vad.onnx")).toStdString());
-            } catch (const std::exception &e) {
-                qCritical() << "Failed to load ONNX models:" << e.what();
-                return;
-            }
+    auto handlePermission = [connState, &micPermissionGranted,
+                             &tryStartPipeline](Qt::PermissionStatus status) {
+        if (status == Qt::PermissionStatus::Granted) {
+            qInfo() << "Microphone permission granted";
+            connState->appendLog(QStringLiteral("[INFO] Microphone permission granted"));
+            micPermissionGranted = true;
+            tryStartPipeline();
+        } else {
+            qWarning() << "Microphone permission denied";
+            connState->appendLog(
+                QStringLiteral("[WARN] Microphone access denied. Grant access in System Settings > "
+                               "Privacy & Security > Microphone."));
+        }
+    };
 
-            auto *wakeDetector = new pairion::wake::OpenWakewordDetector(
-                melSession, embSession, clsSession, settings->wakeThreshold(), &app);
-            auto *vad = new pairion::vad::SileroVad(vadSession, settings->vadThreshold(),
-                                                    settings->vadSilenceEndMs(), &app);
-
-            auto *orchestrator = new pairion::pipeline::AudioSessionOrchestrator(
-                capture, encoder, wakeDetector, vad, wsClient, connState, &app);
-
-            // Connect capture output to encoder, wake, and VAD (cross-thread via queued)
-            QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable,
-                             encoder, &pairion::audio::PairionOpusEncoder::encodePcmFrame);
-            QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable,
-                             wakeDetector, &pairion::wake::OpenWakewordDetector::processPcmFrame);
-            QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable,
-                             vad, &pairion::vad::SileroVad::processPcmFrame);
-
-            audioThread->start();
-            QMetaObject::invokeMethod(capture, "start", Qt::QueuedConnection);
-            orchestrator->startListening();
+    switch (permissionStatus) {
+    case Qt::PermissionStatus::Undetermined:
+        qInfo() << "Requesting microphone permission...";
+        app.requestPermission(micPermission, [handlePermission](const QPermission &perm) {
+            handlePermission(perm.status());
         });
+        break;
+    case Qt::PermissionStatus::Granted:
+        handlePermission(Qt::PermissionStatus::Granted);
+        break;
+    case Qt::PermissionStatus::Denied:
+        handlePermission(Qt::PermissionStatus::Denied);
+        break;
+    }
+
+    QObject::connect(modelDownloader, &pairion::core::ModelDownloader::allModelsReady, &app,
+                     [&modelsReady, &tryStartPipeline]() {
+                         qInfo() << "All models ready";
+                         modelsReady = true;
+                         tryStartPipeline();
+                     });
 
     QObject::connect(modelDownloader, &pairion::core::ModelDownloader::downloadError, &app,
-                     [](const QString &msg) { qWarning() << "Model download error:" << msg; });
+                     [connState](const QString &msg) {
+                         qWarning() << "Model download error:" << msg;
+                         connState->appendLog(
+                             QStringLiteral("[ERROR] Model download: %1").arg(msg));
+                     });
 
-    // Connect to server, then check models
+    // WebSocket connects regardless of mic permission — debug panel shows Connected
     QObject::connect(wsClient, &pairion::ws::PairionWebSocketClient::sessionOpened, modelDownloader,
                      [modelDownloader]() { modelDownloader->checkAndDownload(); });
 
@@ -130,9 +204,8 @@ int main(int argc, char *argv[]) {
 
     int result = app.exec();
 
-    audioThread->quit();
-    audioThread->wait();
-    delete capture;
+    encoderThread->quit();
+    encoderThread->wait();
     delete encoder;
 
     return result;
