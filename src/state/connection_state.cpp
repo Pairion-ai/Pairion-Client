@@ -59,7 +59,7 @@ void ConnectionState::setReconnectAttempts(int count) {
 
 void ConnectionState::appendLog(const QString &entry) {
     m_recentLogs.prepend(entry);
-    while (m_recentLogs.size() > 10) {
+    while (m_recentLogs.size() > 50) {
         m_recentLogs.removeLast();
     }
     emit recentLogsChanged();

@@ -143,11 +143,11 @@ class TestIntegration : public QObject {
         for (int i = 0; i < 15; i++) {
             state.appendLog(QStringLiteral("Log entry %1").arg(i));
         }
-        // Should keep only 10 most recent
-        QCOMPARE(state.recentLogs().size(), 10);
+        // Should keep only 50 most recent
+        QCOMPARE(state.recentLogs().size(), 15);
         // Most recent should be first
         QCOMPARE(state.recentLogs().at(0), QStringLiteral("Log entry 14"));
-        QCOMPARE(state.recentLogs().at(9), QStringLiteral("Log entry 5"));
+        QCOMPARE(state.recentLogs().at(14), QStringLiteral("Log entry 0"));
     }
 
     /// Verify ConnectionState property change signals.

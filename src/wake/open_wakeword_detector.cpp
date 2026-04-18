@@ -2,15 +2,18 @@
  * @file open_wakeword_detector.cpp
  * @brief Implementation of the openWakeWord three-model detector.
  *
- * Data flow per the openWakeWord architecture:
- *   1. Accumulate 1280 PCM samples (80 ms)
- *   2. Run melspectrogram → output [1,1,5,32] → store 5 mel frames (each 32 floats)
- *   3. When 76 mel frames accumulated, run embedding → output [1,1,1,96]
- *   4. When 16 embedding features accumulated, run classifier → output [1,1] score
+ * Data flow matching the openWakeWord Python library:
+ *   1. Accumulate raw PCM into a sliding buffer
+ *   2. Every 1280 samples (80ms), run melspectrogram on the last N+480 samples
+ *      (480 = 160*3 samples of context for mel window overlap)
+ *   3. Append mel rows to a rolling mel buffer, take last 76 for embedding
+ *   4. Append embedding features to a rolling feature buffer
+ *   5. Take last 16 features for classifier → score
  */
 
 #include "open_wakeword_detector.h"
 
+#include <algorithm>
 #include <QLoggingCategory>
 
 Q_LOGGING_CATEGORY(lcWake, "pairion.wake")
@@ -22,67 +25,88 @@ OpenWakewordDetector::OpenWakewordDetector(pairion::core::OnnxInferenceSession *
                                            pairion::core::OnnxInferenceSession *classifierSession,
                                            double threshold, QObject *parent)
     : QObject(parent), m_melSession(melSession), m_embeddingSession(embeddingSession),
-      m_classifierSession(classifierSession), m_threshold(threshold) {}
+      m_classifierSession(classifierSession), m_threshold(threshold) {
+    // Pre-fill the raw audio buffer with silence so the mel model has enough
+    // context from the very first real audio chunk. The mel model needs at least
+    // 1280 + 480 = 1760 samples. We pre-fill with enough for the full warmup.
+    m_rawAudioBuffer.resize(kMelContextSamples, 0.0f);
+}
 
 void OpenWakewordDetector::processPcmFrame(const QByteArray &pcm20ms) {
-    // Maintain pre-roll buffer (rolling window of ~200 ms)
+    // Maintain pre-roll buffer (rolling window of ~200 ms raw PCM)
     m_preRollBuffer.append(pcm20ms);
     if (m_preRollBuffer.size() > kPreRollBytes) {
         m_preRollBuffer = m_preRollBuffer.right(kPreRollBytes);
     }
 
-    // Accumulate PCM until we have 1280 samples (2560 bytes) for mel
-    m_pcmAccumulator.append(pcm20ms);
+    // Convert int16 to float32 and append to raw audio buffer
+    int sampleCount = pcm20ms.size() / 2;
+    const auto *pcmData = reinterpret_cast<const int16_t *>(pcm20ms.constData());
+    for (int i = 0; i < sampleCount; ++i) {
+        m_rawAudioBuffer.push_back(static_cast<float>(pcmData[i]) / 32768.0f);
+    }
+    m_accumulatedSamples += sampleCount;
 
-    while (m_pcmAccumulator.size() >= kMelChunkBytes) {
-        QByteArray chunk = m_pcmAccumulator.left(kMelChunkBytes);
-        m_pcmAccumulator.remove(0, kMelChunkBytes);
+    // Process when we have accumulated 1280 samples (80ms)
+    if (m_accumulatedSamples >= kMelChunkSamples) {
+        processAccumulatedAudio();
+        m_accumulatedSamples = 0;
+    }
 
-        // Convert int16 to float32
-        const auto *pcmData = reinterpret_cast<const int16_t *>(chunk.constData());
-        std::vector<float> floatSamples(kMelChunkSamples);
-        for (int i = 0; i < kMelChunkSamples; ++i) {
-            floatSamples[i] = static_cast<float>(pcmData[i]) / 32768.0f;
-        }
-
-        processChunk(floatSamples);
+    // Trim raw audio buffer to prevent unbounded growth
+    if (static_cast<int>(m_rawAudioBuffer.size()) > kMaxRawBufferSamples) {
+        m_rawAudioBuffer.erase(
+            m_rawAudioBuffer.begin(),
+            m_rawAudioBuffer.begin() +
+                (static_cast<int>(m_rawAudioBuffer.size()) - kMaxRawBufferSamples));
     }
 }
 
-void OpenWakewordDetector::processChunk(const std::vector<float> &samples1280) {
-    // Stage 1: Melspectrogram — input [1, 1280], output [1, 1, 5, 32]
-    pairion::core::OnnxTensor melInput{"input", samples1280, {}, {1, kMelChunkSamples}};
-    auto melOutputs = m_melSession->run({melInput}, {"output"});
+void OpenWakewordDetector::processAccumulatedAudio() {
+    // Feed the mel model with the last chunk + 480 samples of context,
+    // matching the Python library's _streaming_melspectrogram behavior.
+    int totalSamples = static_cast<int>(m_rawAudioBuffer.size());
+    int feedSamples = std::min(totalSamples, m_accumulatedSamples + kMelContextSamples);
+    int startIdx = totalSamples - feedSamples;
+
+    std::vector<float> melInput(m_rawAudioBuffer.begin() + startIdx, m_rawAudioBuffer.end());
+
+    // Stage 1: Melspectrogram
+    pairion::core::OnnxTensor melTensor{
+        "input", melInput, {}, {1, static_cast<int64_t>(melInput.size())}};
+    auto melOutputs = m_melSession->run({melTensor}, {"output"});
 
     if (melOutputs.empty() || melOutputs[0].data.empty()) {
         return;
     }
 
-    // Extract mel frames: output is [1, 1, N, 32], take each row of 32 floats
+    // Extract mel rows (output is [1, 1, N, 32]), append to rolling buffer
     const auto &melData = melOutputs[0].data;
-    int totalMelFloats = static_cast<int>(melData.size());
-    int numFrames = totalMelFloats / kMelFrameWidth;
-    for (int f = 0; f < numFrames; ++f) {
-        std::vector<float> frame(melData.begin() + f * kMelFrameWidth,
-                                 melData.begin() + (f + 1) * kMelFrameWidth);
-        m_melFrames.push_back(std::move(frame));
+    int numMelRows = static_cast<int>(melData.size()) / kMelFrameWidth;
+    // Only take the last rows corresponding to the new chunk
+    // (Python takes all rows produced and appends them)
+    for (int f = 0; f < numMelRows; ++f) {
+        std::vector<float> row(melData.begin() + f * kMelFrameWidth,
+                               melData.begin() + (f + 1) * kMelFrameWidth);
+        m_melBuffer.push_back(std::move(row));
     }
 
-    // Trim to keep only the last kMelFramesNeeded frames
-    while (static_cast<int>(m_melFrames.size()) > kMelFramesNeeded) {
-        m_melFrames.pop_front();
+    // Trim mel buffer to max length
+    while (static_cast<int>(m_melBuffer.size()) > kMelBufferMaxLen) {
+        m_melBuffer.pop_front();
     }
 
-    // Stage 2: Embedding — need exactly 76 mel frames
-    if (static_cast<int>(m_melFrames.size()) < kMelFramesNeeded) {
+    // Stage 2: Embedding — need at least 76 mel rows
+    if (static_cast<int>(m_melBuffer.size()) < kMelFramesNeeded) {
         return;
     }
 
-    // Build embedding input [1, 76, 32, 1]
+    // Take last 76 mel rows, reshape to [1, 76, 32, 1]
+    int startRow = static_cast<int>(m_melBuffer.size()) - kMelFramesNeeded;
     std::vector<float> embInput(kMelFramesNeeded * kMelFrameWidth);
     for (int i = 0; i < kMelFramesNeeded; ++i) {
-        std::copy(m_melFrames[i].begin(), m_melFrames[i].end(),
-                  embInput.begin() + i * kMelFrameWidth);
+        const auto &row = m_melBuffer[startRow + i];
+        std::copy(row.begin(), row.end(), embInput.begin() + i * kMelFrameWidth);
     }
 
     pairion::core::OnnxTensor embTensor{
@@ -93,25 +117,26 @@ void OpenWakewordDetector::processChunk(const std::vector<float> &samples1280) {
         return;
     }
 
-    // Extract embedding feature [1, 1, 1, 96] → 96 floats
+    // Append embedding feature to rolling buffer
     m_embFeatures.push_back(embOutputs[0].data);
-
-    // Trim to keep only the last kEmbFeaturesNeeded
-    while (static_cast<int>(m_embFeatures.size()) > kEmbFeaturesNeeded) {
+    while (static_cast<int>(m_embFeatures.size()) > kFeatureBufferMaxLen) {
         m_embFeatures.pop_front();
     }
 
-    // Stage 3: Classifier — need exactly 16 embedding features
-    if (static_cast<int>(m_embFeatures.size()) >= kEmbFeaturesNeeded) {
-        runClassifier();
+    // Stage 3: Classifier — need at least 16 embedding features
+    if (static_cast<int>(m_embFeatures.size()) < kEmbFeaturesNeeded) {
+        return;
     }
+
+    runClassifier();
 }
 
 void OpenWakewordDetector::runClassifier() {
-    // Build classifier input [1, 16, 96]
+    // Take last 16 embedding features, reshape to [1, 16, 96]
+    int startFeat = static_cast<int>(m_embFeatures.size()) - kEmbFeaturesNeeded;
     std::vector<float> clsInput(kEmbFeaturesNeeded * kEmbFeatureSize);
     for (int i = 0; i < kEmbFeaturesNeeded; ++i) {
-        const auto &feat = m_embFeatures[i];
+        const auto &feat = m_embFeatures[startFeat + i];
         int copySize = std::min(static_cast<int>(feat.size()), kEmbFeatureSize);
         std::copy(feat.begin(), feat.begin() + copySize, clsInput.begin() + i * kEmbFeatureSize);
     }
@@ -125,6 +150,10 @@ void OpenWakewordDetector::runClassifier() {
     }
 
     float score = clsOutputs[0].data[0];
+
+    if (score > 0.1) {
+        qCInfo(lcWake) << "Classifier score:" << score;
+    }
 
     if (score < m_threshold) {
         return;

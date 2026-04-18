@@ -141,28 +141,24 @@ Item {
         Rectangle { Layout.fillWidth: true; height: 1; color: "#333355" }
 
         // --- Log header ---
-        Text { text: "Recent Logs"; font.pixelSize: 13; font.bold: true; color: "#aaaaaa" }
+        Text { text: "Recent Logs (select all + copy)"; font.pixelSize: 13; font.bold: true; color: "#aaaaaa" }
 
-        // --- Scrolling log list ---
-        ListView {
+        // --- Selectable/copyable log text area ---
+        ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: ConnectionState.recentLogs
 
-            delegate: Text {
-                required property string modelData
-                required property int index
-                width: ListView.view.width
-                text: modelData
+            TextArea {
+                text: ConnectionState.recentLogs.join("\n")
                 color: "#cccccc"
                 font.pixelSize: 10
                 font.family: "monospace"
-                wrapMode: Text.WrapAnywhere
-                topPadding: 1; bottomPadding: 1
+                wrapMode: TextArea.WrapAnywhere
+                readOnly: true
+                selectByMouse: true
+                background: Rectangle { color: "transparent" }
             }
-
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         }
     }
 }
