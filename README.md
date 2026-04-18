@@ -56,7 +56,7 @@ ctest --preset macos-debug --output-on-failure
 ## Coverage
 
 ```bash
-# Requires lcov and genhtml
+# Requires lcov and genhtml — enforces 100% line coverage on src/
 cmake --build --preset macos-debug --target coverage
 open build/macos-debug/coverage_report/index.html
 ```

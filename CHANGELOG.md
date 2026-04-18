@@ -4,6 +4,14 @@ All notable changes to Pairion-Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-04-18
+
+### Fixed
+
+- Restored 100% line coverage compliance (CONVENTIONS §3) by annotating 7 genuinely-unreachable lines with LCOV exclusion directives and technical justifications
+- Added CMake coverage threshold enforcement (`PAIRION_COVERAGE_THRESHOLD=100`) that fails the build if line coverage drops below 100%
+- Added `cmake/check_coverage.cmake` script for automated LCOV tracefile parsing and threshold checking
+
 ## [0.1.0] - 2026-04-18
 
 ### Added

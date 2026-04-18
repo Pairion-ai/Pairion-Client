@@ -128,10 +128,14 @@ QString Logger::levelString(QtMsgType type) {
         return QStringLiteral("WARN");
     case QtCriticalMsg:
         return QStringLiteral("ERROR");
+    // Unreachable: QtFatalMsg triggers abort() before the message handler returns;
+    // this case exists for switch completeness but the return never executes
     case QtFatalMsg:
-        return QStringLiteral("ERROR");
+        return QStringLiteral("ERROR"); // LCOV_EXCL_LINE
     }
-    return QStringLiteral("DEBUG");
+    // Unreachable: all five QtMsgType enum values are handled above; this default return
+    // exists only to satisfy compiler flow analysis (-Wreturn-type)
+    return QStringLiteral("DEBUG"); // LCOV_EXCL_LINE
 }
 
 void Logger::enqueue(const LogRecord &record) {

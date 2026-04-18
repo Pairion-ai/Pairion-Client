@@ -94,6 +94,9 @@ add_test(NAME tst_integration COMMAND tst_integration)
 # --------------------------------------------------------------------------
 # Coverage target
 # --------------------------------------------------------------------------
+# Required line coverage percentage (CONVENTIONS §3: 100% mandatory)
+set(PAIRION_COVERAGE_THRESHOLD 100 CACHE STRING "Minimum required line coverage percentage")
+
 if(PAIRION_COVERAGE)
     find_program(LCOV lcov)
     find_program(GENHTML genhtml)
@@ -110,8 +113,12 @@ if(PAIRION_COVERAGE)
             COMMAND ${GENHTML} coverage_filtered.info --output-directory coverage_report
                 --ignore-errors unmapped --ignore-errors category
             COMMAND echo "Coverage report: ${CMAKE_BINARY_DIR}/coverage_report/index.html"
+            COMMAND ${CMAKE_COMMAND}
+                -DCOVERAGE_FILE=${CMAKE_BINARY_DIR}/coverage_filtered.info
+                -DTHRESHOLD=${PAIRION_COVERAGE_THRESHOLD}
+                -P ${CMAKE_SOURCE_DIR}/cmake/check_coverage.cmake
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            COMMENT "Generating code coverage report"
+            COMMENT "Generating code coverage report and enforcing ${PAIRION_COVERAGE_THRESHOLD}% threshold"
         )
     else()
         message(WARNING "lcov/genhtml not found — coverage target unavailable")

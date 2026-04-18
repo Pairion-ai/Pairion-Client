@@ -40,7 +40,9 @@ class ConnectionState : public QObject {
         Connected,
         Reconnecting,
     };
-    Q_ENUM(Status)
+    // Unreachable: Q_ENUM macro generates qt_getEnumName/qt_getEnumMetaObject introspection
+    // functions that are only invoked by Qt's internal meta-object system, not by application code
+    Q_ENUM(Status) // LCOV_EXCL_LINE
 
     /**
      * @brief Construct with optional parent.

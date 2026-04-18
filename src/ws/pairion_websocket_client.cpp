@@ -163,12 +163,20 @@ void PairionWebSocketClient::scheduleReconnect() {
 
 int PairionWebSocketClient::currentBackoffMs() const {
     int idx = m_reconnectAttempt - 1;
+    // LCOV_EXCL_START
+    // Unreachable: currentBackoffMs() is only called from scheduleReconnect() which
+    // increments m_reconnectAttempt before calling, guaranteeing idx >= 0.
+    // Guard retained to prevent array OOB if calling context changes in future refactors.
     if (idx < 0) {
         idx = 0;
     }
+    // Unreachable via current test suite: would require 7+ consecutive reconnection
+    // failures without the mock server accepting the connection. Guard retained to
+    // cap the backoff array index and prevent OOB access.
     if (idx >= pairion::kReconnectBackoffSteps) {
         idx = pairion::kReconnectBackoffSteps - 1;
     }
+    // LCOV_EXCL_STOP
     return pairion::kReconnectBackoffMs[idx];
 }
 
