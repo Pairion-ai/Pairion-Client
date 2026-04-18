@@ -4,6 +4,7 @@
 //! via [`tokio::sync::watch`] channels. The WebSocket client updates
 //! these; Tauri commands read them to serve React frontend queries.
 
+use crate::pipeline::OrchestratorHandle;
 use crate::ws::OutboundSender;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -130,32 +131,52 @@ pub struct AppState {
     pub session_rx: watch::Receiver<SessionState>,
     /// Sender for outbound WebSocket messages (shared with audio pipeline and commands).
     pub outbound_tx: OutboundSender,
+    /// Handle to the audio session orchestrator.
+    pub orchestrator: OrchestratorHandle,
 }
 
 impl AppState {
-    /// Creates a new application state with the given device id, server URL,
-    /// and outbound WebSocket message sender.
-    pub fn new(device_id: String, server_url: String, outbound_tx: OutboundSender) -> Self {
+    /// Creates a new application state.
+    pub fn new(
+        device_id: String,
+        server_url: String,
+        outbound_tx: OutboundSender,
+        orchestrator: OrchestratorHandle,
+        session_tx: Arc<watch::Sender<SessionState>>,
+        session_rx: watch::Receiver<SessionState>,
+    ) -> Self {
         let (conn_tx, conn_rx) = watch::channel(ConnectionState::default());
-        let (sess_tx, sess_rx) = watch::channel(SessionState::default());
         Self {
             connection_tx: Arc::new(conn_tx),
             connection_rx: conn_rx,
             device_id,
             server_url,
-            session_tx: Arc::new(sess_tx),
-            session_rx: sess_rx,
+            session_tx,
+            session_rx,
             outbound_tx,
+            orchestrator,
         }
     }
 }
 
-/// Creates a test AppState with a dummy outbound sender.
-/// Only available in test builds.
+/// Creates a test AppState with a dummy outbound sender and orchestrator.
+/// Only available in test builds. Does NOT require a Tokio runtime.
 #[cfg(test)]
 pub fn test_app_state(device_id: &str, server_url: &str) -> AppState {
     let (tx, _rx) = crate::ws::create_outbound_channel();
-    AppState::new(device_id.to_string(), server_url.to_string(), tx)
+    let (sess_tx, sess_rx) = watch::channel(SessionState::default());
+    let sess_tx = Arc::new(sess_tx);
+    // Create a dummy orchestrator handle — channel goes nowhere but doesn't panic
+    let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(8);
+    let orch = OrchestratorHandle::new_test(cmd_tx);
+    AppState::new(
+        device_id.to_string(),
+        server_url.to_string(),
+        tx,
+        orch,
+        sess_tx,
+        sess_rx,
+    )
 }
 
 #[cfg(test)]

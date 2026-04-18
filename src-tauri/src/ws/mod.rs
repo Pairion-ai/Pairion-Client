@@ -15,6 +15,7 @@ pub use channel::{create_outbound_channel, OutboundMessage, OutboundReceiver, Ou
 pub use messages::*;
 
 use crate::config::AppConfig;
+use crate::pipeline::{OrchestratorCommand, OrchestratorHandle};
 use crate::state::{AgentState, ConnectionState, SessionState};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
@@ -37,6 +38,7 @@ pub async fn run_ws_client(
     connection_tx: Arc<watch::Sender<ConnectionState>>,
     session_tx: Arc<watch::Sender<SessionState>>,
     mut outbound_rx: OutboundReceiver,
+    orchestrator: OrchestratorHandle,
 ) {
     let mut attempt: u32 = 0;
 
@@ -54,6 +56,7 @@ pub async fn run_ws_client(
             &connection_tx,
             &session_tx,
             &mut outbound_rx,
+            &orchestrator,
         )
         .await
         {
@@ -92,6 +95,7 @@ async fn connect_and_run(
     connection_tx: &Arc<watch::Sender<ConnectionState>>,
     session_tx: &Arc<watch::Sender<SessionState>>,
     outbound_rx: &mut OutboundReceiver,
+    orchestrator: &OrchestratorHandle,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (ws_stream, _) = tokio_tungstenite::connect_async(&config.ws_url).await?;
     let (mut write, mut read) = ws_stream.split();
@@ -155,13 +159,15 @@ async fn connect_and_run(
             msg = read.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        handle_text_message(&text, connection_tx, session_tx, &mut last_pong);
+                        handle_text_message(&text, connection_tx, session_tx, &mut last_pong, orchestrator);
                     }
-                    Some(Ok(Message::Binary(_data))) => {
-                        // M1: Binary frames are AudioChunkOut (TTS audio)
-                        // Playback integration is handled by the audio pipeline
-                        // which reads from a shared channel. For now, log receipt.
-                        debug!("Received binary audio frame ({} bytes)", _data.len());
+                    Some(Ok(Message::Binary(data))) => {
+                        // Route AudioChunkOut binary frames to the orchestrator
+                        debug!(bytes = data.len(), "Routing binary audio to orchestrator");
+                        let _ = orchestrator.try_send(OrchestratorCommand::InboundAudio {
+                            stream_id: String::new(), // Stream ID from last AudioStreamStart
+                            opus_frame: data.to_vec(),
+                        });
                     }
                     Some(Ok(Message::Close(_))) => {
                         info!("Server closed connection");
@@ -207,6 +213,7 @@ fn handle_text_message(
     connection_tx: &Arc<watch::Sender<ConnectionState>>,
     session_tx: &Arc<watch::Sender<SessionState>>,
     last_pong: &mut tokio::time::Instant,
+    orchestrator: &OrchestratorHandle,
 ) {
     // First try to read the type discriminator
     let Ok(incoming) = serde_json::from_str::<IncomingMessage>(text) else {
@@ -280,11 +287,16 @@ fn handle_text_message(
         }
         "AudioStreamEnd" => {
             if let Ok(msg) = serde_json::from_str::<AudioStreamEndPayload>(text) {
+                let reason = msg.reason.clone().unwrap_or_else(|| "normal".to_string());
                 debug!(
                     stream_id = %msg.stream_id,
-                    reason = msg.reason.as_deref().unwrap_or("normal"),
-                    "Audio stream ended"
+                    reason = %reason,
+                    "Audio stream ended — routing to orchestrator"
                 );
+                let _ = orchestrator.try_send(OrchestratorCommand::InboundStreamEnd {
+                    stream_id: msg.stream_id,
+                    reason,
+                });
             }
         }
         "LlmTokenStream" | "ToolCallStarted" | "ToolCallCompleted" => {
@@ -304,6 +316,11 @@ fn handle_text_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_test_orchestrator() -> OrchestratorHandle {
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(8);
+        OrchestratorHandle::new_test(cmd_tx)
+    }
 
     #[test]
     fn test_calculate_backoff() {
@@ -330,7 +347,8 @@ mod tests {
         let mut last_pong = tokio::time::Instant::now();
 
         let msg = r#"{"type":"HeartbeatPong","timestamp":"2025-01-01T00:00:00Z","latencyMs":15.0}"#;
-        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong, &orch);
 
         let state = conn_rx.borrow().clone();
         match state {
@@ -350,7 +368,8 @@ mod tests {
         let mut last_pong = tokio::time::Instant::now();
 
         let msg = r#"{"type":"SessionOpened","sessionId":"sess-1","userId":"owner","timestamp":"2025-01-01T00:00:00Z"}"#;
-        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong, &orch);
 
         let session = sess_rx.borrow();
         assert_eq!(session.session_id.as_deref(), Some("sess-1"));
@@ -371,7 +390,8 @@ mod tests {
         let mut last_pong = tokio::time::Instant::now();
 
         let msg = r#"{"type":"SessionClosed","sessionId":"sess-1","reason":"normal","timestamp":"2025-01-01T00:00:00Z"}"#;
-        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong, &orch);
 
         let session = sess_rx.borrow();
         assert!(session.session_id.is_none());
@@ -391,7 +411,8 @@ mod tests {
         let mut last_pong = tokio::time::Instant::now();
 
         let msg = r#"{"type":"AgentStateChange","sessionId":"s1","state":"thinking","timestamp":"2025-01-01T00:00:00Z"}"#;
-        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong, &orch);
 
         assert_eq!(sess_rx.borrow().agent_state, AgentState::Thinking);
     }
@@ -405,7 +426,8 @@ mod tests {
         let mut last_pong = tokio::time::Instant::now();
 
         let msg = r#"{"type":"TranscriptPartial","sessionId":"s1","text":"what's the","timestamp":"2025-01-01T00:00:00Z"}"#;
-        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong, &orch);
 
         assert_eq!(sess_rx.borrow().partial_transcript, "what's the");
     }
@@ -422,7 +444,8 @@ mod tests {
         let mut last_pong = tokio::time::Instant::now();
 
         let msg = r#"{"type":"TranscriptFinal","sessionId":"s1","text":"what's the weather","timestamp":"2025-01-01T00:00:00Z"}"#;
-        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong, &orch);
 
         let session = sess_rx.borrow();
         assert_eq!(session.final_transcript, "what's the weather");
@@ -439,7 +462,8 @@ mod tests {
 
         // Should not panic on unknown types
         let msg = r#"{"type":"SomeUnknownType","data":"test"}"#;
-        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message(msg, &conn_tx, &sess_tx, &mut last_pong, &orch);
     }
 
     #[test]
@@ -451,6 +475,7 @@ mod tests {
         let mut last_pong = tokio::time::Instant::now();
 
         // Should not panic on invalid JSON
-        handle_text_message("not json", &conn_tx, &sess_tx, &mut last_pong);
+        let orch = make_test_orchestrator();
+        handle_text_message("not json", &conn_tx, &sess_tx, &mut last_pong, &orch);
     }
 }

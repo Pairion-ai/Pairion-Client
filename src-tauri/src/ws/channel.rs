@@ -92,6 +92,11 @@ impl OutboundReceiver {
     pub async fn recv(&mut self) -> Option<OutboundMessage> {
         self.0.recv().await
     }
+
+    /// Tries to receive a message without waiting. Returns `None` if empty.
+    pub fn try_recv(&mut self) -> Option<OutboundMessage> {
+        self.0.try_recv().ok()
+    }
 }
 
 /// Errors from the outbound channel.

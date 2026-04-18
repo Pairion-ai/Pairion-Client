@@ -68,47 +68,66 @@ pub fn get_session_state(state: tauri::State<'_, AppState>) -> SessionState {
 
 /// Starts a listening session for voice input.
 ///
-/// In M1, this signals readiness to capture audio. The actual audio
-/// pipeline startup happens when the Server responds with `SessionOpened`.
+/// Sends `StartManual` to the orchestrator, which emits `AudioStreamStart`
+/// over the WS and begins the capture → encode → send pipeline.
 #[tauri::command]
 pub fn start_listening_session(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let session_id = uuid::Uuid::new_v4().to_string();
-    tracing::info!(session_id = %session_id, "Starting listening session");
+    let stream_id = uuid::Uuid::new_v4().to_string();
+    tracing::info!(stream_id = %stream_id, "Starting manual listening session");
 
-    let _ = state.session_tx.send(crate::state::SessionState {
-        session_id: Some(session_id.clone()),
-        agent_state: crate::state::AgentState::Listening,
-        active: true,
-        ..Default::default()
+    let orch = state.orchestrator.clone();
+    let sid = stream_id.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = orch
+            .send(crate::pipeline::OrchestratorCommand::StartManual { stream_id: sid })
+            .await;
     });
 
-    Ok(session_id)
+    Ok(stream_id)
 }
 
 /// Stops the current listening session.
 ///
-/// Closes the audio capture pipeline and resets session state to idle.
+/// Sends `StopCurrent` to the orchestrator, which cleans up the pipeline
+/// and resets session state.
 #[tauri::command]
 pub fn stop_current_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
     tracing::info!("Stopping current session");
-    let _ = state.session_tx.send(crate::state::SessionState::default());
+
+    let orch = state.orchestrator.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = orch
+            .send(crate::pipeline::OrchestratorCommand::StopCurrent)
+            .await;
+    });
+
     Ok(())
 }
 
-/// Sends a text message in the current session (dev-mode bypass).
+/// Sends a text message in the current session over the WebSocket.
 ///
-/// Bypasses wake-word + audio, sending a text message directly to the
-/// Server. Useful for testing without a microphone.
+/// Bypasses wake-word + audio, sending a `TextMessage` directly to the
+/// Server via the outbound WS channel.
 #[tauri::command]
 pub fn send_text_message(
-    _session_id: String,
-    _text: String,
-    _state: tauri::State<'_, AppState>,
+    session_id: String,
+    text: String,
+    state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    tracing::info!(text = %_text, "Sending text message (dev mode)");
-    // In a full implementation, this sends a TextMessage over the WebSocket.
-    // For M1, we log the intent. Full WS send integration requires access
-    // to the WS write half, which is owned by the WS client task.
+    tracing::info!(session_id = %session_id, text = %text, "Sending text message");
+
+    let payload = crate::ws::TextMessagePayload {
+        r#type: "TextMessage".to_string(),
+        session_id,
+        text,
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    };
+    let msg = crate::ws::OutboundMessage::json(&payload).map_err(|e| e.to_string())?;
+    let tx = state.outbound_tx.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = tx.send(msg).await;
+    });
+
     Ok(())
 }
 

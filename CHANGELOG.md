@@ -4,6 +4,28 @@ All notable changes to Pairion Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-04-17
+
+### Added
+
+- AudioSessionOrchestrator: actor-style pipeline coordinator for voice sessions
+  - StartFromWake: wake → WakeWordDetected → AudioStreamStart → encode pre-roll → stream
+  - StartManual: command-initiated sessions with AudioStreamStart
+  - CapturedAudio: Opus frame encoding and binary WS frame sending
+  - VadEndOfSpeech: AudioStreamEnd + SpeechEnded emission
+  - InboundAudio: TTS binary frame decoding via PairionOpusDecoder
+  - InboundStreamEnd: clean drain on normal, crash-free on interrupted
+  - StopCurrent/Shutdown: clean pipeline teardown
+- Tauri commands wired to orchestrator: start_listening_session, stop_current_session
+- send_text_message sends TextMessage over WS via outbound channel (no longer a stub)
+- WS dispatch routes AudioStreamEnd to orchestrator for session lifecycle
+- WS dispatch routes binary AudioChunkOut frames to orchestrator for decoding
+- Latency instrumentation: wake.detected, stream.start, stream.first_frame,
+  tts.first_chunk, playback.first events logged with timing
+- docs/M1-STATUS.md: M1 code-complete status with physical verification instructions
+- OutboundReceiver.try_recv() for non-blocking message consumption in tests
+- OrchestratorHandle.new_test() for test construction without Tokio runtime
+
 ## [0.2.2] - 2026-04-17
 
 ### Added
