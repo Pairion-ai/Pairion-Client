@@ -38,7 +38,7 @@ PairionAudioPlayback::~PairionAudioPlayback() {
 
 void PairionAudioPlayback::initAudioSink() {
     QAudioFormat format;
-    format.setSampleRate(16000);
+    format.setSampleRate(kSampleRate);
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
     m_sink = new QAudioSink(QMediaDevices::defaultAudioOutput(), format, this);

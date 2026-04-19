@@ -59,8 +59,8 @@ class TestOpusCodec : public QObject {
         QCOMPARE(decErrSpy.count(), 0);
         QCOMPARE(decSpy.count(), 1);
         QByteArray pcm = decSpy.at(0).at(0).toByteArray();
-        // 320 samples * 2 bytes = 640 bytes
-        QCOMPARE(pcm.size(), 640);
+        // 960 samples * 2 bytes = 1920 bytes (48 kHz output, 20 ms frame)
+        QCOMPARE(pcm.size(), 1920);
     }
 
     /// Verify round-trip preserves audio length.
@@ -82,7 +82,7 @@ class TestOpusCodec : public QObject {
         QSignalSpy decSpy(&decoder, &PairionOpusDecoder::pcmFrameDecoded);
         decoder.decodeOpusFrame(encSpy.at(0).at(0).toByteArray());
         QCOMPARE(decSpy.count(), 1);
-        QCOMPARE(decSpy.at(0).at(0).toByteArray().size(), 640);
+        QCOMPARE(decSpy.at(0).at(0).toByteArray().size(), 1920);
     }
 
     /// Verify encoder rejects wrong-size input.

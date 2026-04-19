@@ -101,7 +101,7 @@ class PairionAudioPlayback : public QObject {
     bool m_isSpeaking = false;
 
     static constexpr int kJitterMs = 50;
-    static constexpr int kSampleRate = 16000;
+    static constexpr int kSampleRate = 48000;
 };
 
 } // namespace pairion::audio

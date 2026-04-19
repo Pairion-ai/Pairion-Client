@@ -45,7 +45,7 @@ class PairionOpusDecoder : public QObject {
 
   private:
     OpusDecoder *m_decoder = nullptr;
-    static constexpr int kSampleRate = 16000;
+    static constexpr int kSampleRate = 48000;
     static constexpr int kChannels = 1;
     static constexpr int kMaxFrameSamples = 5760; ///< 120 ms max at 48 kHz
 };
