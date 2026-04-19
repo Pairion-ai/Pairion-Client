@@ -42,6 +42,7 @@ void PairionAudioPlayback::initAudioSink() {
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
     m_sink = new QAudioSink(QMediaDevices::defaultAudioOutput(), format, this);
+    m_sink->setBufferSize(kSinkBufferBytes);
     m_audioDevice = m_sink->start();
     // LCOV_EXCL_START — only reachable when audio hardware is unavailable
     if (!m_audioDevice || m_sink->error() != QAudio::NoError) {
@@ -59,6 +60,7 @@ void PairionAudioPlayback::start() {
 void PairionAudioPlayback::preparePlayback() {
     // Restart the sink if a previous stream's handleStreamEnd() stopped it.
     if (m_sink && m_sink->state() == QAudio::StoppedState) {
+        m_sink->setBufferSize(kSinkBufferBytes);
         m_audioDevice = m_sink->start();
         // LCOV_EXCL_START — only reachable when audio hardware is unavailable
         if (!m_audioDevice || m_sink->error() != QAudio::NoError) {
@@ -99,8 +101,18 @@ void PairionAudioPlayback::handlePcmFrame(const QByteArray &pcm) {
     }
     m_silenceTimer->start(500);
     while (!m_jitterBuffer.isEmpty() && m_audioDevice) {
-        QByteArray data = m_jitterBuffer.dequeue();
-        m_audioDevice->write(data);
+        QByteArray &head = m_jitterBuffer.head();
+        qint64 written = m_audioDevice->write(head);
+        // LCOV_EXCL_START — buffer-full/partial-write paths: unreachable with kSinkBufferBytes
+        if (written <= 0) {
+            break;
+        }
+        if (written < static_cast<qint64>(head.size())) {
+            head = head.mid(static_cast<int>(written));
+            break;
+        }
+        // LCOV_EXCL_STOP
+        m_jitterBuffer.dequeue();
     }
 }
 

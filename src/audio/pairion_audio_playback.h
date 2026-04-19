@@ -102,6 +102,9 @@ class PairionAudioPlayback : public QObject {
 
     static constexpr int kJitterMs = 50;
     static constexpr int kSampleRate = 48000;
+    /// 5-second software ring buffer — large enough to absorb full TTS bursts without
+    /// partial writes that would corrupt the PCM byte stream.
+    static constexpr int kSinkBufferBytes = kSampleRate * 2 * 5;
 };
 
 } // namespace pairion::audio
