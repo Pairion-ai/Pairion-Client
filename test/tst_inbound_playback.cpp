@@ -178,7 +178,7 @@ class TestInboundPlayback : public QObject {
     /// Verify preparePlayback() after stop() restarts the sink (covers the StoppedState branch).
     void preparePlaybackAfterStopRestartsDevice() {
         PairionAudioPlayback playback;
-        playback.handleStreamEnd(QStringLiteral("normal")); // stops the sink
+        playback.stop(); // explicitly stop the sink
         // preparePlayback() must restart the stopped sink without crashing.
         playback.preparePlayback();
         // A PCM frame delivered now should set m_isSpeaking=true regardless of hardware.

@@ -117,10 +117,21 @@ void PairionAudioPlayback::handlePcmFrame(const QByteArray &pcm) {
 }
 
 void PairionAudioPlayback::handleStreamEnd(const QString &reason) {
-    stop();
+    if (m_silenceTimer)
+        m_silenceTimer->stop();
+    if (m_isSpeaking) {
+        m_isSpeaking = false;
+        emit speakingStateChanged("idle");
+    }
+    m_jitterBuffer.clear();
     if (reason != "normal") {
+        // Abnormal end: discard buffered audio immediately.
+        if (m_sink)
+            m_sink->stop();
+        m_audioDevice = nullptr;
         emit playbackError("Stream ended with reason: " + reason);
     }
+    // Normal end: sink keeps draining the buffer so the last syllables play to completion.
 }
 
 } // namespace pairion::audio
