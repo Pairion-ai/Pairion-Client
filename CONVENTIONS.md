@@ -31,7 +31,7 @@ Claude never writes code of any kind in any prompt. This includes implementation
 - **Build system:** CMake 3.25+, using Qt6's CMake integration and cross-platform CMake presets
 - **Dependency manager:** Conan or vcpkg for third-party C++ dependencies (onnxruntime, libopus). Qt itself managed via `aqtinstall` or the official Qt online installer.
 - **Test framework:** Qt Test (`QtTest` module) for unit tests; mock WebSocket server for integration tests
-- **Coverage:** gcov on Linux/macOS, OpenCppCoverage on Windows. 100% line coverage enforced in CI config (local-only during development).
+- **Coverage:** gcov on Linux/macOS, OpenCppCoverage on Windows. 100% line coverage enforced locally via CMake coverage target.
 - **Shader toolchain:** `qsb` (Qt shader baker) compiles GLSL source to cross-platform `.qsb` files that run on Metal, Vulkan, and D3D11 backends.
 
 ## 2. Documentation Requirements
@@ -57,8 +57,6 @@ Every task runs and must pass before commit:
 - `ctest --preset macos-debug --output-on-failure` — runs all tests
 - `cmake --build --preset macos-debug --target coverage` — coverage check (fails if < 100%)
 - `clang-format --dry-run --Werror **/*.cpp **/*.h` — formatting
-
-CI (GitHub Actions) added at M12.
 
 ## 5. Code Style
 
