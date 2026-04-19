@@ -35,6 +35,7 @@ add_library(pairion_core STATIC
     src/audio/pairion_opus_encoder.cpp
     src/audio/pairion_opus_decoder.cpp
     src/audio/pairion_audio_capture.cpp
+    src/audio/pairion_audio_playback.cpp
     # wake
     src/wake/open_wakeword_detector.cpp
     # vad
@@ -161,29 +162,36 @@ add_test(NAME tst_audio_session_orchestrator COMMAND tst_audio_session_orchestra
 set(PAIRION_COVERAGE_THRESHOLD 100 CACHE STRING "Minimum required line coverage percentage")
 
 if(PAIRION_COVERAGE)
-    find_program(LCOV lcov)
-    find_program(GENHTML genhtml)
-    if(LCOV AND GENHTML)
-        add_custom_target(coverage
-            COMMAND ${LCOV} --directory . --zerocounters
-            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-            COMMAND ${LCOV} --directory . --capture --output-file coverage.info
-                --ignore-errors inconsistent
-            COMMAND ${LCOV} --remove coverage.info
-                '/opt/homebrew/*' '/usr/*' '*/test/*' '*/moc_*' '*/qrc_*' '*/main.cpp'
-                --output-file coverage_filtered.info
-                --ignore-errors unused
+    if(UNIX)
+        find_program(LCOV lcov)
+        find_program(GENHTML genhtml)
+        if(LCOV AND GENHTML)
+            set(COVERAGE_IGNORE_PATTERNS "'/opt/homebrew/*' '/usr/*' '/Library/*' '*/test/*' '*/moc_*' '*/qrc_*' '*/main.cpp'")
+            if(APPLE)
+                set(COVERAGE_IGNORE_PATTERNS "'/opt/homebrew/*' '/usr/local/*' '/Library/*' '*/test/*' '*/moc_*' '*/qrc_*' '*/main.cpp'")
+            endif()
+            add_custom_target(coverage
+                COMMAND ${LCOV} --directory . --zerocounters
+                COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+            COMMAND ${LCOV} --directory . --capture --output-file coverage.info --ignore-errors inconsistent
+            COMMAND ${LCOV} --remove coverage.info ${COVERAGE_IGNORE_PATTERNS}
+                --output-file coverage_filtered.info --ignore-errors inconsistent,unused
+
             COMMAND ${GENHTML} coverage_filtered.info --output-directory coverage_report
-                --ignore-errors unmapped --ignore-errors category
-            COMMAND echo "Coverage report: ${CMAKE_BINARY_DIR}/coverage_report/index.html"
-            COMMAND ${CMAKE_COMMAND}
-                -DCOVERAGE_FILE=${CMAKE_BINARY_DIR}/coverage_filtered.info
-                -DTHRESHOLD=${PAIRION_COVERAGE_THRESHOLD}
-                -P ${CMAKE_SOURCE_DIR}/cmake/check_coverage.cmake
-            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            COMMENT "Generating code coverage report and enforcing ${PAIRION_COVERAGE_THRESHOLD}% threshold"
-        )
+                --ignore-errors inconsistent,unmapped,corrupt,category
+
+                COMMAND echo "Coverage report: ${CMAKE_BINARY_DIR}/coverage_report/index.html"
+                COMMAND ${CMAKE_COMMAND}
+                    -DCOVERAGE_FILE=${CMAKE_BINARY_DIR}/coverage_filtered.info
+                    -DTHRESHOLD=${PAIRION_COVERAGE_THRESHOLD}
+                    -P ${CMAKE_SOURCE_DIR}/cmake/check_coverage.cmake
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                COMMENT "Generating code coverage report and enforcing ${PAIRION_COVERAGE_THRESHOLD}% threshold (cross-platform ignores)"
+            )
+        else()
+            message(WARNING "lcov/genhtml not found — coverage target unavailable on this platform")
+        endif()
     else()
-        message(WARNING "lcov/genhtml not found — coverage target unavailable")
+        message(STATUS "Coverage target disabled on Windows (use OpenCppCoverage in CI)")
     endif()
 endif()

@@ -28,6 +28,7 @@
 #include "vad/silero_vad.h"
 #include "wake/open_wakeword_detector.h"
 #include "ws/pairion_websocket_client.h"
+#include "audio/pairion_audio_playback.h"
 
 #include <QGuiApplication>
 #include <QNetworkAccessManager>
@@ -76,11 +77,12 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
         new pairion::wake::OpenWakewordDetector(melSession, embSession, clsSession, wakeThreshold);
     auto *vad = new pairion::vad::SileroVad(vadSession, settings->vadThreshold(),
                                             settings->vadSilenceEndMs());
+    auto *playback = new pairion::audio::PairionAudioPlayback(app);
     wakeDetector->moveToThread(inferenceThread);
     vad->moveToThread(inferenceThread);
 
     auto *orchestrator = new pairion::pipeline::AudioSessionOrchestrator(
-        capture, encoder, wakeDetector, vad, wsClient, connState, app);
+        capture, encoder, wakeDetector, vad, wsClient, connState, playback, app);
 
     // Connect capture → encoder (cross-thread to encoder thread, queued)
     QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable, encoder,

@@ -20,9 +20,9 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
     pairion::audio::PairionAudioCapture *capture, pairion::audio::PairionOpusEncoder *encoder,
     pairion::wake::OpenWakewordDetector *wakeDetector, pairion::vad::SileroVad *vad,
     pairion::ws::PairionWebSocketClient *wsClient, pairion::state::ConnectionState *connState,
-    QObject *parent)
-    : QObject(parent), m_capture(capture), m_encoder(encoder), m_wakeDetector(wakeDetector),
-      m_vad(vad), m_wsClient(wsClient), m_connState(connState) {
+    pairion::audio::PairionAudioPlayback *playback, QObject *parent)
+    : QObject(parent), m_capture(capture), m_encoder(encoder), m_playback(playback),
+      m_wakeDetector(wakeDetector), m_vad(vad), m_wsClient(wsClient), m_connState(connState) {
 
     connect(m_wakeDetector, &pairion::wake::OpenWakewordDetector::wakeWordDetected, this,
             &AudioSessionOrchestrator::onWakeWordDetected);
@@ -30,10 +30,16 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
             &AudioSessionOrchestrator::onSpeechEnded);
     connect(m_encoder, &pairion::audio::PairionOpusEncoder::opusFrameEncoded, this,
             &AudioSessionOrchestrator::onOpusFrameEncoded);
+    if (m_playback) {
+        connect(m_playback, &pairion::audio::PairionAudioPlayback::speakingStateChanged, m_connState,
+                &pairion::state::ConnectionState::setAgentState);
+    }
 
     m_streamingTimeout.setSingleShot(true);
     connect(&m_streamingTimeout, &QTimer::timeout, this,
             &AudioSessionOrchestrator::onStreamingTimeout);
+    connect(m_wsClient, &pairion::ws::PairionWebSocketClient::binaryFrameReceived, this,
+            &AudioSessionOrchestrator::onInboundAudio);
 }
 
 AudioSessionOrchestrator::State AudioSessionOrchestrator::state() const {
@@ -149,6 +155,16 @@ void AudioSessionOrchestrator::transitionTo(State newState) {
                                                   "ending_speech"};
     m_state = newState;
     m_connState->setVoiceState(QString::fromUtf8(kStateNames[static_cast<int>(newState)]));
+}
+
+void AudioSessionOrchestrator::onInboundAudio(const QByteArray &opusFrame) {
+    if (m_playback) m_playback->handleOpusFrame(opusFrame);
+    m_connState->setAgentState("speaking");
+}
+
+void AudioSessionOrchestrator::onInboundStreamEnd(const QString &reason) {
+    if (m_playback) m_playback->handleStreamEnd(reason);
+    m_connState->setAgentState("idle");
 }
 
 } // namespace pairion::pipeline

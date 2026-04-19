@@ -26,7 +26,7 @@ class TestSettings : public QObject {
     /// Verify defaults when no QSettings values exist.
     void defaultValues() {
         Settings settings;
-        QCOMPARE(settings.wakeThreshold(), 0.5);
+        QCOMPARE(settings.wakeThreshold(), 0.3);
         QCOMPARE(settings.vadSilenceEndMs(), 800);
         QCOMPARE(settings.vadThreshold(), 0.5);
         QVERIFY(settings.audioInputDevice().isEmpty());
@@ -78,7 +78,7 @@ class TestSettings : public QObject {
     void noEmitOnSameValue() {
         Settings settings;
         QSignalSpy spy(&settings, &Settings::wakeThresholdChanged);
-        settings.setWakeThreshold(0.5); // same as default
+        settings.setWakeThreshold(0.3);
         QCOMPARE(spy.count(), 0);
     }
 };

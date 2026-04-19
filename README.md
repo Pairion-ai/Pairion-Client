@@ -2,34 +2,27 @@
 
 Native Qt 6 desktop client for the Pairion household AI assistant. Connects to Pairion-Server via WebSocket, displays a debug panel showing connection state, and will evolve into the full cinematic HUD.
 
-## Prerequisites
+## Prerequisites & One-Command Install (Phase B2)
 
-- CMake 3.25+
-- Ninja build system
-- Qt 6.6+ with modules: Core, Quick, Network, WebSockets, Multimedia, Test
-- libopus (for Opus audio encoding/decoding)
-- onnxruntime (for ONNX model inference — wake word and VAD)
-- clang-format (for code formatting checks)
-
-### macOS
+Run the appropriate script from `scripts/install/` (creates all deps, idempotent):
 
 ```bash
-brew install qt cmake ninja clang-format opus onnxruntime
+# macOS (ARM64 or Intel)
+./scripts/install/macos.sh
+
+# Linux (Ubuntu 24.04+ recommended)
+./scripts/install/linux.sh
+
+# Windows (PowerShell as Administrator)
+./scripts/install/windows.ps1
 ```
 
-### Windows
+**Supported targets (new presets):**
+- macOS arm64, x86_64
+- Linux x86_64, arm64
+- Windows x86_64
 
-Install Qt 6.6+ via the online installer. Install libopus and onnxruntime via vcpkg. Use MSVC 2022 with CMake and Ninja.
-
-### Linux
-
-Install Qt 6.6+ via your distribution's package manager or `aqtinstall`. Install libopus and onnxruntime via your package manager or build from source.
-
-```bash
-# Ubuntu/Debian
-sudo apt install qt6-base-dev qt6-declarative-dev qt6-websockets-dev \
-    libopus-dev libonnxruntime-dev cmake ninja-build clang-format lcov
-```
+Requires: CMake 3.25+, Ninja, Qt 6.6+ (installed by script), libopus, onnxruntime (vcpkg/tar.gz/Homebrew).
 
 ## Microphone Permission
 
@@ -47,14 +40,17 @@ To enable tests that exercise real ONNX model files (requires models to be downl
 cmake --preset macos-debug -DPAIRION_CLIENT_NATIVE_TESTS=ON
 ```
 
-## Build
+## Build (use platform-specific preset)
 
 ```bash
-# Configure (macOS debug)
-cmake --preset macos-debug
+# Example: macOS ARM64 debug (recommended for M4)
+cmake --preset macos-arm64-debug
+cmake --build --preset macos-arm64-debug
 
-# Build
-cmake --build --preset macos-debug
+# Other examples:
+# cmake --preset macos-x86_64-debug
+# cmake --preset linux-x86_64-debug
+# cmake --preset windows-x86_64-debug
 ```
 
 ## Run

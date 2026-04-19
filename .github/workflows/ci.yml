@@ -1,0 +1,80 @@
+name: Client CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: macos
+            arch: arm64
+            runner: macos-14
+            preset: macos-arm64-debug
+            install: ./scripts/install/macos.sh
+          - os: macos
+            arch: x86_64
+            runner: macos-13
+            preset: macos-x86_64-debug
+            install: ./scripts/install/macos.sh
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+            preset: linux-x86_64-debug
+            install: ./scripts/install/linux.sh
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            preset: linux-arm64-debug
+            install: ./scripts/install/linux.sh
+          - os: windows
+            arch: x86_64
+            runner: windows-2022
+            preset: windows-x86_64-debug
+            install: ./scripts/install/windows.ps1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run install script
+        run: ${{ matrix.install }}
+        shell: bash
+
+      - name: Configure CMake
+        run: cmake --preset ${{ matrix.preset }} -DPAIRION_CLIENT_NATIVE_TESTS=ON
+        shell: bash
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }} -- -j2
+        shell: bash
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+        shell: bash
+
+      - name: Coverage (Unix)
+        if: matrix.os != 'windows'
+        run: cmake --build --preset ${{ matrix.preset }} --target coverage
+        shell: bash
+
+      - name: Format check
+        run: |
+          if [[ "${{ matrix.os }}" != "windows" ]]; then
+            find src test -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
+          else
+            echo "Format check skipped on Windows (clang-format via vcpkg in CI)"
+          fi
+        shell: bash
+
+      - name: Upload coverage
+        if: matrix.os != 'windows'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./build/${{ matrix.preset }}/coverage_filtered.info
+          fail_ci_if_error: true

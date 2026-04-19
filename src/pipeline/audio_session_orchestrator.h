@@ -11,6 +11,7 @@
 
 #include "../audio/pairion_audio_capture.h"
 #include "../audio/pairion_opus_encoder.h"
+#include "../audio/pairion_audio_playback.h"
 #include "../state/connection_state.h"
 #include "../vad/silero_vad.h"
 #include "../wake/open_wakeword_detector.h"
@@ -45,7 +46,9 @@ class AudioSessionOrchestrator : public QObject {
                              pairion::wake::OpenWakewordDetector *wakeDetector,
                              pairion::vad::SileroVad *vad,
                              pairion::ws::PairionWebSocketClient *wsClient,
-                             pairion::state::ConnectionState *connState, QObject *parent = nullptr);
+                             pairion::state::ConnectionState *connState,
+                             pairion::audio::PairionAudioPlayback *playback = nullptr,
+                             QObject *parent = nullptr);
 
     /// @brief Current pipeline state.
     State state() const;
@@ -69,6 +72,8 @@ class AudioSessionOrchestrator : public QObject {
     void onSpeechEnded();
     void onOpusFrameEncoded(const QByteArray &opusFrame);
     void onStreamingTimeout();
+    void onInboundAudio(const QByteArray &opusFrame);
+    void onInboundStreamEnd(const QString &reason);
 
   private:
     void transitionTo(State newState);
@@ -76,6 +81,7 @@ class AudioSessionOrchestrator : public QObject {
 
     pairion::audio::PairionAudioCapture *m_capture;
     pairion::audio::PairionOpusEncoder *m_encoder;
+    pairion::audio::PairionAudioPlayback *m_playback;
     pairion::wake::OpenWakewordDetector *m_wakeDetector;
     pairion::vad::SileroVad *m_vad;
     pairion::ws::PairionWebSocketClient *m_wsClient;

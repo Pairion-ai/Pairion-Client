@@ -32,11 +32,12 @@ class TestAudioSessionOrchestrator : public QObject {
 
         PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
         PairionOpusEncoder encoder;
+        PairionAudioPlayback playback;
         MockOnnxSession mel, emb, cls, vadSess;
         OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
         SileroVad vad(&vadSess, 0.5, 800);
 
-        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState, &playback);
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
     }
 
