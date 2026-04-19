@@ -111,7 +111,8 @@
             "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_FLAGS": "/W4 /WX"
+                "CMAKE_CXX_FLAGS": "/W4 /WX",
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
         },
         {
@@ -121,7 +122,8 @@
             "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_CXX_FLAGS": "/W4 /WX"
+                "CMAKE_CXX_FLAGS": "/W4 /WX",
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
         }
     ],

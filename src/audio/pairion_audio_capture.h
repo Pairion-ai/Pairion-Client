@@ -42,11 +42,26 @@ class PairionAudioCapture : public QObject {
 
     ~PairionAudioCapture() override;
 
+    /// @brief Configured device ID (empty = system default).
+    QString configuredDeviceId() const { return m_configuredDeviceId; }
+    /// @brief Configured sample rate in Hz.
+    int configuredSampleRate() const { return m_configuredSampleRate; }
+
   public slots:
     /// @brief Start capturing audio from the microphone.
     void start();
     /// @brief Stop capturing audio.
     void stop();
+    /**
+     * @brief Configure the capture device and sample rate before start().
+     * @param deviceId Device name string from QMediaDevices::audioInputs().
+     *        Empty string selects the system default input.
+     * @param sampleRate Target sample rate in Hz. Falls back to 16000 if the
+     *        device does not support the requested rate.
+     *
+     * If capture is already running, it is stopped and restarted immediately.
+     */
+    void configure(const QString &deviceId, int sampleRate);
 
   signals:
     /// Emitted for each 20 ms PCM frame (always 640 bytes).
@@ -65,6 +80,9 @@ class PairionAudioCapture : public QObject {
     QByteArray m_accumulator;
     bool m_ownsSource = false;
     bool m_running = false;
+
+    QString m_configuredDeviceId;
+    int m_configuredSampleRate = 16000;
 
     static constexpr int kSampleRate = 16000;
     static constexpr int kChannels = 1;

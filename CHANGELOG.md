@@ -4,6 +4,30 @@ All notable changes to Pairion-Client will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-04-19
+
+### Added
+
+- Pre-roll Opus encoding: wake-word pre-roll PCM (~200 ms) is now Opus-encoded via a dedicated main-thread encoder instance before transmission, replacing the silent-drop TODO
+- Inbound server audio pipeline: `AudioStreamStartOut` and `AudioStreamEndOut` WebSocket messages now trigger `PairionAudioPlayback.preparePlayback()` and `handleStreamEnd()` respectively
+- `PairionAudioPlayback.preparePlayback()`: pre-warms the QAudioSink jitter buffer with silence before the first inbound Opus frame to prevent underrun
+- `PairionWebSocketClient` signals: `audioStreamStartOutReceived` and `audioStreamEndOutReceived` for inbound server audio stream lifecycle
+- `PairionAudioCapture.configure(deviceId, sampleRate)`: runtime device and sample rate selection wired to `Settings::audioInputDevice` and `Settings::audioSampleRate` with live reconfiguration on change
+- Version header generated at build time via CMake `configure_file(src/core/version.h.in)` — `kClientVersion` is now always in sync with the project VERSION
+- CMake option `PAIRION_WAKE_DIAGNOSTICS` (default OFF): enables Info-level wake classifier score logging
+- Per-platform install scripts: `scripts/install/linux-debian.sh`, `scripts/install/linux-fedora.sh`, `scripts/install/README.md`
+- Windows CMakePresets now include `CMAKE_TOOLCHAIN_FILE` wired to `$env{VCPKG_ROOT}`
+- New test suites: `tst_inbound_playback`, `tst_constants`
+- `tst_audio_session_orchestrator`: pre-roll Opus encoding test
+- `tst_settings`: `configure()` propagation test
+
+### Fixed
+
+- `kWakeSuppresssionMs` typo corrected to `kWakeSuppressionMs` in `constants.h`
+- Debug `/tmp/pairion_wake_scores.csv` file writing removed from production build; replaced by conditional `#ifdef PAIRION_WAKE_DIAGNOSTICS` logging
+- Inbound binary frame 4-byte stream-ID prefix now stripped before passing payload to Opus decoder
+- `PairionAudioPlayback` class and all public methods now fully documented (resolves scorecard CQ-09, CQ-10)
+
 ## [0.2.1] - 2026-04-18
 
 ### Fixed

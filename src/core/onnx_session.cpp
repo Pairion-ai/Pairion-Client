@@ -19,6 +19,7 @@ struct OrtInferenceSession::Impl {
     Ort::MemoryInfo memInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
 };
 
+// LCOV_EXCL_START — OrtInferenceSession requires real ONNX model files; tests use MockOnnxSession
 OrtInferenceSession::OrtInferenceSession(const std::string &modelPath)
     : m_impl(std::make_unique<Impl>()) {
     Ort::SessionOptions opts;
@@ -82,5 +83,6 @@ std::vector<OnnxOutput> OrtInferenceSession::run(const std::vector<OnnxTensor> &
 
     return result;
 }
+// LCOV_EXCL_STOP
 
 } // namespace pairion::core

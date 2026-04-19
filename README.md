@@ -2,27 +2,32 @@
 
 Native Qt 6 desktop client for the Pairion household AI assistant. Connects to Pairion-Server via WebSocket, displays a debug panel showing connection state, and will evolve into the full cinematic HUD.
 
-## Prerequisites & One-Command Install (Phase B2)
+## Prerequisites & One-Command Install
 
-Run the appropriate script from `scripts/install/` (creates all deps, idempotent):
+Run the appropriate script from `scripts/install/` (idempotent, safe to re-run):
 
 ```bash
-# macOS (ARM64 or Intel)
+# macOS (ARM64 or Intel) — Homebrew
 ./scripts/install/macos.sh
 
-# Linux (Ubuntu 24.04+ recommended)
-./scripts/install/linux.sh
+# Linux — Debian / Ubuntu 24.04+
+./scripts/install/linux-debian.sh
 
-# Windows (PowerShell as Administrator)
-./scripts/install/windows.ps1
+# Linux — Fedora / RHEL
+./scripts/install/linux-fedora.sh
+
+# Windows x86_64 (PowerShell as Administrator) — vcpkg
+.\scripts\install\windows.ps1
 ```
 
-**Supported targets (new presets):**
+See `scripts/install/README.md` for per-platform post-install verification steps.
+
+**Supported targets:**
 - macOS arm64, x86_64
 - Linux x86_64, arm64
 - Windows x86_64
 
-Requires: CMake 3.25+, Ninja, Qt 6.6+ (installed by script), libopus, onnxruntime (vcpkg/tar.gz/Homebrew).
+Requires: CMake 3.25+, Ninja, Qt 6.5+, libopus, onnxruntime (all installed by the script).
 
 ## Microphone Permission
 

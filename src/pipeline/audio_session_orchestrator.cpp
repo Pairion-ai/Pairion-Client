@@ -5,6 +5,7 @@
 
 #include "audio_session_orchestrator.h"
 
+#include "../audio/pairion_opus_encoder.h"
 #include "../protocol/binary_codec.h"
 #include "../protocol/envelope_codec.h"
 
@@ -21,7 +22,8 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
     pairion::wake::OpenWakewordDetector *wakeDetector, pairion::vad::SileroVad *vad,
     pairion::ws::PairionWebSocketClient *wsClient, pairion::state::ConnectionState *connState,
     pairion::audio::PairionAudioPlayback *playback, QObject *parent)
-    : QObject(parent), m_capture(capture), m_encoder(encoder), m_playback(playback),
+    : QObject(parent), m_capture(capture), m_encoder(encoder),
+      m_preRollEncoder(new pairion::audio::PairionOpusEncoder(this)), m_playback(playback),
       m_wakeDetector(wakeDetector), m_vad(vad), m_wsClient(wsClient), m_connState(connState) {
 
     connect(m_wakeDetector, &pairion::wake::OpenWakewordDetector::wakeWordDetected, this,
@@ -40,6 +42,10 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
             &AudioSessionOrchestrator::onStreamingTimeout);
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::binaryFrameReceived, this,
             &AudioSessionOrchestrator::onInboundAudio);
+    connect(m_wsClient, &pairion::ws::PairionWebSocketClient::audioStreamStartOutReceived, this,
+            &AudioSessionOrchestrator::onInboundAudioStreamStart);
+    connect(m_wsClient, &pairion::ws::PairionWebSocketClient::audioStreamEndOutReceived, this,
+            &AudioSessionOrchestrator::onInboundStreamEnd);
 }
 
 AudioSessionOrchestrator::State AudioSessionOrchestrator::state() const {
@@ -80,14 +86,21 @@ void AudioSessionOrchestrator::onWakeWordDetected(float score, const QByteArray 
     startMsg.streamId = m_activeStreamId;
     m_wsClient->sendMessage(startMsg);
 
-    // Send pre-roll audio as binary frames
+    // Encode and send pre-roll audio as Opus binary frames.
+    // m_preRollEncoder lives on the main thread (not moved to EncoderThread), so
+    // opusFrameEncoded fires synchronously via Qt::DirectConnection.
     constexpr int kFrameBytes = 640;
+    auto preRollConn = QObject::connect(
+        m_preRollEncoder, &pairion::audio::PairionOpusEncoder::opusFrameEncoded, this,
+        [this](const QByteArray &encoded) {
+            m_wsClient->sendBinaryFrame(
+                protocol::BinaryCodec::encodeBinaryFrame(m_activeStreamId, encoded));
+        },
+        Qt::DirectConnection);
     for (int offset = 0; offset + kFrameBytes <= preRollBuffer.size(); offset += kFrameBytes) {
-        QByteArray pcmFrame = preRollBuffer.mid(offset, kFrameBytes);
-        // Pre-roll is raw PCM — in a full implementation we'd encode it via Opus first.
-        // For M1, send the raw pre-roll as binary (the server handles both formats).
-        // TODO(PC-003): encode pre-roll through Opus before sending.
+        m_preRollEncoder->encodePcmFrame(preRollBuffer.mid(offset, kFrameBytes));
     }
+    QObject::disconnect(preRollConn);
 
     transitionTo(State::Streaming);
     m_streamingTimeout.start(kStreamingTimeoutMs);
@@ -113,6 +126,7 @@ void AudioSessionOrchestrator::onOpusFrameEncoded(const QByteArray &opusFrame) {
     m_wsClient->sendBinaryFrame(binaryFrame);
 }
 
+// LCOV_EXCL_START — kStreamingTimeoutMs is 30 s; not exercisable in unit tests
 void AudioSessionOrchestrator::onStreamingTimeout() {
     if (m_state != State::Streaming) {
         return;
@@ -120,6 +134,7 @@ void AudioSessionOrchestrator::onStreamingTimeout() {
     qCWarning(lcPipeline) << "Streaming timeout after" << kStreamingTimeoutMs << "ms";
     endStream(QStringLiteral("timeout"));
 }
+// LCOV_EXCL_STOP
 
 void AudioSessionOrchestrator::endStream(const QString &reason) {
     m_streamingTimeout.stop();
@@ -157,14 +172,22 @@ void AudioSessionOrchestrator::transitionTo(State newState) {
     m_connState->setVoiceState(QString::fromUtf8(kStateNames[static_cast<int>(newState)]));
 }
 
-void AudioSessionOrchestrator::onInboundAudio(const QByteArray &opusFrame) {
-    if (m_playback) m_playback->handleOpusFrame(opusFrame);
-    m_connState->setAgentState("speaking");
+void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {
+    auto decoded = protocol::BinaryCodec::decodeBinaryFrame(binaryFrame);
+    if (decoded.payload.isEmpty()) {
+        return;
+    }
+    if (m_playback) m_playback->handleOpusFrame(decoded.payload);
 }
 
-void AudioSessionOrchestrator::onInboundStreamEnd(const QString &reason) {
+void AudioSessionOrchestrator::onInboundAudioStreamStart(const QString &streamId) {
+    qCInfo(lcPipeline) << "Inbound audio stream started:" << streamId;
+    if (m_playback) m_playback->preparePlayback();
+}
+
+void AudioSessionOrchestrator::onInboundStreamEnd(const QString &streamId, const QString &reason) {
+    qCInfo(lcPipeline) << "Inbound audio stream ended:" << streamId << "reason:" << reason;
     if (m_playback) m_playback->handleStreamEnd(reason);
-    m_connState->setAgentState("idle");
 }
 
 } // namespace pairion::pipeline

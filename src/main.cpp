@@ -137,6 +137,19 @@ int main(int argc, char *argv[]) {
     auto *capture = new pairion::audio::PairionAudioCapture(&app);
     auto *encoder = new pairion::audio::PairionOpusEncoder();
 
+    // Apply device/rate settings now and keep them in sync with Settings changes.
+    capture->configure(settings->audioInputDevice(), settings->audioSampleRate());
+    QObject::connect(settings, &pairion::settings::Settings::audioInputDeviceChanged, &app,
+                     [capture, settings]() {
+                         capture->configure(settings->audioInputDevice(),
+                                            settings->audioSampleRate());
+                     });
+    QObject::connect(settings, &pairion::settings::Settings::audioSampleRateChanged, &app,
+                     [capture, settings]() {
+                         capture->configure(settings->audioInputDevice(),
+                                            settings->audioSampleRate());
+                     });
+
     auto *encoderThread = new QThread(&app);
     encoderThread->setObjectName(QStringLiteral("EncoderThread"));
     encoder->moveToThread(encoderThread);

@@ -22,5 +22,10 @@ Write-Host "Installing packages via vcpkg (this may take time)..."
 & "$VcpkgRoot\vcpkg" install qtbase:x64-windows qtdeclarative:x64-windows qtwebsockets:x64-windows qtmultimedia:x64-windows opus:x64-windows onnxruntime:x64-windows
 
 Write-Host "✅ Windows dependencies installed via vcpkg." -ForegroundColor Green
-Write-Host "Set VCPKG_ROOT=$VcpkgRoot before running CMake, or use -DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot/scripts/buildsystems/vcpkg.cmake"
-Write-Host "Next: cmake --preset windows-x86_64-debug -DCMAKE_TOOLCHAIN_FILE=`"$VcpkgRoot/scripts/buildsystems/vcpkg.cmake`"" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Set VCPKG_ROOT permanently so CMakePresets.json picks it up automatically:" -ForegroundColor Yellow
+Write-Host "  [System.Environment]::SetEnvironmentVariable('VCPKG_ROOT', '$VcpkgRoot', 'User')" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Then build with (VCPKG_ROOT toolchain is wired into the preset):" -ForegroundColor Yellow
+Write-Host "  cmake --preset windows-x86_64-debug" -ForegroundColor Cyan
+Write-Host "  cmake --build --preset windows-x86_64-debug" -ForegroundColor Cyan

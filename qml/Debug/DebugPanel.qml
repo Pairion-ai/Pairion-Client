@@ -107,21 +107,25 @@ Item {
 
         // --- Transcript section ---
         Text { text: "Transcript"; font.pixelSize: 13; font.bold: true; color: "#aaaaaa" }
-        Text {
+        TextArea {
             text: ConnectionState.transcriptPartial
                   ? "[partial] " + ConnectionState.transcriptPartial
                   : ""
             color: "#88aacc"; font.pixelSize: 11; font.italic: true
             visible: ConnectionState.transcriptPartial !== ""
-            Layout.fillWidth: true; wrapMode: Text.WrapAnywhere
+            Layout.fillWidth: true; wrapMode: TextArea.WrapAnywhere
+            readOnly: true; selectByMouse: true
+            background: Rectangle { color: "transparent" }
         }
-        Text {
+        TextArea {
             text: ConnectionState.transcriptFinal
                   ? "[final] " + ConnectionState.transcriptFinal
                   : ""
             color: "#ccddee"; font.pixelSize: 12
             visible: ConnectionState.transcriptFinal !== ""
-            Layout.fillWidth: true; wrapMode: Text.WrapAnywhere
+            Layout.fillWidth: true; wrapMode: TextArea.WrapAnywhere
+            readOnly: true; selectByMouse: true
+            background: Rectangle { color: "transparent" }
         }
 
         // --- LLM Response section ---
@@ -130,10 +134,12 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 80
             clip: true
-            Text {
+            TextArea {
                 text: ConnectionState.llmResponse || "\u2014"
                 color: "#e0e0e0"; font.pixelSize: 11; font.family: "monospace"
-                width: parent.width; wrapMode: Text.WrapAnywhere
+                wrapMode: TextArea.WrapAnywhere
+                readOnly: true; selectByMouse: true
+                background: Rectangle { color: "transparent" }
             }
         }
 

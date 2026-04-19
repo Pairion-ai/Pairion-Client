@@ -142,6 +142,12 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
             } else if constexpr (std::is_same_v<T, protocol::LlmTokenStream>) {
                 m_connState->appendLlmToken(m.delta);
                 emit llmTokenReceived(m.delta);
+            } else if constexpr (std::is_same_v<T, protocol::AudioStreamStartOut>) {
+                qCInfo(lcWs) << "Inbound audio stream start:" << m.streamId;
+                emit audioStreamStartOutReceived(m.streamId);
+            } else if constexpr (std::is_same_v<T, protocol::AudioStreamEndOut>) {
+                qCInfo(lcWs) << "Inbound audio stream end:" << m.streamId << m.reason;
+                emit audioStreamEndOutReceived(m.streamId, m.reason);
             }
         },
         msg);

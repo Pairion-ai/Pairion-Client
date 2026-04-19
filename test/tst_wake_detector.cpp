@@ -97,8 +97,23 @@ class TestWakeDetector : public QObject {
         feedFramesUntilClassification(detector, mel, emb, cls, 0.9f);
         QCOMPARE(spy.count(), 1);
 
-        // Second classification immediately — should be suppressed
-        feedFramesUntilClassification(detector, mel, emb, cls, 0.9f);
+        // Enqueue outputs for a second classification attempt.
+        // After the first pass the detector has mel buffer and emb features populated,
+        // so a few new frames will quickly trigger mel → emb → classifier again.
+        for (int i = 0; i < 5; ++i) enqueueMelOutput(mel);
+        for (int i = 0; i < 5; ++i) enqueueEmbOutput(emb);
+        int clsCountBefore = cls.runCount();
+        enqueueClsOutput(cls, 0.9f);
+
+        QByteArray pcm(640, '\0');
+        for (int i = 0; i < 200; ++i) {
+            detector.processPcmFrame(pcm);
+            if (cls.runCount() > clsCountBefore) {
+                break;
+            }
+        }
+        // Classifier ran again but signal was suppressed
+        QVERIFY(cls.runCount() > clsCountBefore);
         QCOMPARE(spy.count(), 1);
     }
 
@@ -144,6 +159,17 @@ class TestWakeDetector : public QObject {
         QVERIFY(mel.runCount() > 0);
         QVERIFY(emb.runCount() > 0);
         QVERIFY(cls.runCount() > 0);
+    }
+
+    /// Verify warmup() runs without crash (exercises warmup() loop body).
+    void warmupDoesNotCrash() {
+        MockOnnxSession mel, emb, cls;
+        OpenWakewordDetector detector(&mel, &emb, &cls, 0.5);
+        // warmup() pre-fills the pipeline by calling processAccumulatedAudio() in a loop.
+        // Mock sessions return minimal outputs — the mel stage processes but produces no rows.
+        detector.warmup();
+        // Mel session should have been called once per warmup iteration
+        QVERIFY(mel.runCount() > 0);
     }
 };
 

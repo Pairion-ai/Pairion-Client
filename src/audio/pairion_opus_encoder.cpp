@@ -38,10 +38,12 @@ bool PairionOpusEncoder::isValid() const {
 }
 
 void PairionOpusEncoder::encodePcmFrame(const QByteArray &pcm20ms) {
+    // LCOV_EXCL_START — only reachable if constructor failed (libopus broken); always valid in tests
     if (m_encoder == nullptr) {
         emit encoderError(QStringLiteral("Encoder not initialized"));
         return;
     }
+    // LCOV_EXCL_STOP
     if (pcm20ms.size() != kFrameBytes) {
         emit encoderError(QStringLiteral("Invalid PCM frame size: %1 (expected %2)")
                               .arg(pcm20ms.size())

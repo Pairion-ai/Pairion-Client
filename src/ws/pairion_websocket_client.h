@@ -99,6 +99,10 @@ class PairionWebSocketClient : public QObject {
     void agentStateReceived(const QString &state);
     /// Emitted when an LlmTokenStream message arrives.
     void llmTokenReceived(const QString &delta);
+    /// Emitted when an AudioStreamStart message arrives from the server.
+    void audioStreamStartOutReceived(const QString &streamId);
+    /// Emitted when an AudioStreamEnd message arrives from the server.
+    void audioStreamEndOutReceived(const QString &streamId, const QString &reason);
 
   private slots:
     void onConnected();

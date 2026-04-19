@@ -1,3 +1,8 @@
+/**
+ * @file pairion_audio_playback.cpp
+ * @brief Implementation of the inbound audio playback engine.
+ */
+
 #include "pairion_audio_playback.h"
 #include "pairion_opus_decoder.h"
 #include <QAudioFormat>
@@ -35,6 +40,13 @@ void PairionAudioPlayback::initAudioSink() {
 
 void PairionAudioPlayback::start() {
     if (m_sink) m_sink->start();
+}
+
+void PairionAudioPlayback::preparePlayback() {
+    constexpr int kWarmupBytes = kSampleRate * sizeof(int16_t) * kJitterMs / 1000;
+    if (m_audioDevice) {
+        m_audioDevice->write(QByteArray(kWarmupBytes, '\0'));
+    }
 }
 
 void PairionAudioPlayback::stop() {

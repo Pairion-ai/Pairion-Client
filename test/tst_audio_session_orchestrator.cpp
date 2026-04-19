@@ -200,6 +200,127 @@ class TestAudioSessionOrchestrator : public QObject {
         orch.startListening(); // no-op
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
     }
+
+    /// Verify wakeWordDetected is a no-op when not in AwaitingWake state.
+    void wakeWordGuardWhenNotAwaitingWake() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        PairionAudioPlayback playback;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        // Idle state — wakeWordDetected must not transition.
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState,
+                                      &playback);
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
+        emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
+    }
+
+    /// Verify speechEnded is a no-op when not in Streaming state.
+    void speechEndedGuardWhenNotStreaming() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        orch.startListening(); // AwaitingWake
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
+        // Emit speechEnded when not Streaming — must be ignored.
+        emit vad.speechEnded();
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
+    }
+
+    /// Verify opusFrameEncoded is a no-op when not in Streaming state.
+    void opusFrameGuardWhenNotStreaming() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        orch.startListening(); // AwaitingWake — not Streaming
+        emit encoder.opusFrameEncoded(QByteArray("frame")); // must be ignored
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
+    }
+
+    /// Verify shutdown() when already Idle is a no-op (covers transitionTo same-state guard).
+    void shutdownWhenAlreadyIdleIsNoOp() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
+        orch.shutdown(); // already Idle — transitionTo(Idle) hits same-state early return
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
+    }
+
+    /// Verify pre-roll PCM is Opus-encoded and sent as binary frames before live streaming.
+    void preRollEncodedAndSentAsBinaryFrames() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+        QSignalSpy sessionSpy(&wsClient, &PairionWebSocketClient::sessionOpened);
+        wsClient.connectToServer();
+        QVERIFY(sessionSpy.wait(5000));
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        orch.startListening();
+
+        // Provide exactly 2 PCM frames worth of pre-roll (2 × 640 bytes = 1280 bytes).
+        // m_preRollEncoder encodes each 640-byte chunk into a compressed Opus frame.
+        QByteArray preRoll(1280, '\0');
+        emit wake.wakeWordDetected(0.9f, preRoll);
+
+        // Allow the WS send queue to flush.
+        QTest::qWait(200);
+
+        // At least 2 binary frames must have arrived: one per 640-byte PCM chunk.
+        QVERIFY(server.receivedBinaryMessages().size() >= 2);
+
+        // Each frame = 4-byte stream-ID prefix + Opus payload.
+        // Opus payload must be smaller than raw PCM (640 bytes), proving encoding occurred.
+        for (const auto &frame : server.receivedBinaryMessages()) {
+            QVERIFY(frame.size() > 4);      // non-empty beyond prefix
+            QVERIFY(frame.size() < 4 + 640); // Opus-compressed, not raw PCM
+        }
+
+        wsClient.disconnectFromServer();
+    }
 };
 
 QTEST_GUILESS_MAIN(TestAudioSessionOrchestrator)

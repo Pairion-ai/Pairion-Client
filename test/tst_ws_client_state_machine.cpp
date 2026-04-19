@@ -277,6 +277,151 @@ class TestWsClientStateMachine : public QObject {
         client.disconnectFromServer();
     }
 
+    /// Verify TranscriptPartial and TranscriptFinal messages are forwarded.
+    void transcriptMessagesForwarded() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()["type"].toString() == QLatin1String("DeviceIdentify")) {
+                // Send SessionOpened then TranscriptPartial then TranscriptFinal
+                QJsonObject opened;
+                opened["type"] = QStringLiteral("SessionOpened");
+                opened["sessionId"] = QStringLiteral("s1");
+                opened["serverVersion"] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                QJsonObject partial;
+                partial["type"] = QStringLiteral("TranscriptPartial");
+                partial["text"] = QStringLiteral("hell");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(partial).toJson(QJsonDocument::Compact)));
+
+                QJsonObject final_;
+                final_["type"] = QStringLiteral("TranscriptFinal");
+                final_["text"] = QStringLiteral("hello");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(final_).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy partialSpy(&client, &PairionWebSocketClient::transcriptPartialReceived);
+        QSignalSpy finalSpy(&client, &PairionWebSocketClient::transcriptFinalReceived);
+        client.connectToServer();
+
+        QVERIFY(partialSpy.wait(5000));
+        QCOMPARE(partialSpy.at(0).at(0).toString(), QStringLiteral("hell"));
+        QCOMPARE(connState.transcriptPartial(), QStringLiteral("hell"));
+
+        QVERIFY(finalSpy.count() > 0 || finalSpy.wait(2000));
+        QCOMPARE(connState.transcriptFinal(), QStringLiteral("hello"));
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify LlmTokenStream messages are forwarded and appendLlmToken is called.
+    void llmTokenStreamForwarded() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()["type"].toString() == QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened["type"] = QStringLiteral("SessionOpened");
+                opened["sessionId"] = QStringLiteral("s2");
+                opened["serverVersion"] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                QJsonObject tok;
+                tok["type"] = QStringLiteral("LlmTokenStream");
+                tok["delta"] = QStringLiteral("Hi");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(tok).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy tokenSpy(&client, &PairionWebSocketClient::llmTokenReceived);
+        client.connectToServer();
+
+        QVERIFY(tokenSpy.wait(5000));
+        QCOMPARE(tokenSpy.at(0).at(0).toString(), QStringLiteral("Hi"));
+        QCOMPARE(connState.llmResponse(), QStringLiteral("Hi"));
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify AgentStateChange "thinking" clears the LLM response accumulator.
+    void agentStateThinkingClearsLlm() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()["type"].toString() == QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened["type"] = QStringLiteral("SessionOpened");
+                opened["sessionId"] = QStringLiteral("s3");
+                opened["serverVersion"] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                // First: append a token to the LLM response
+                QJsonObject tok;
+                tok["type"] = QStringLiteral("LlmTokenStream");
+                tok["delta"] = QStringLiteral("text");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(tok).toJson(QJsonDocument::Compact)));
+
+                // Then: AgentStateChange "thinking" should clear it
+                QJsonObject acs;
+                acs["type"] = QStringLiteral("AgentStateChange");
+                acs["state"] = QStringLiteral("thinking");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(acs).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy agentSpy(&client, &PairionWebSocketClient::agentStateReceived);
+        client.connectToServer();
+
+        QVERIFY(agentSpy.wait(5000));
+        QCOMPARE(agentSpy.at(0).at(0).toString(), QStringLiteral("thinking"));
+        QVERIFY(connState.llmResponse().isEmpty());
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify appendLog stores entries and recentLogs returns them.
+    void appendLogAndRecentLogs() {
+        ConnectionState connState;
+        QSignalSpy logSpy(&connState, &ConnectionState::recentLogsChanged);
+
+        connState.appendLog(QStringLiteral("entry1"));
+        connState.appendLog(QStringLiteral("entry2"));
+
+        QCOMPARE(logSpy.count(), 2);
+        QStringList logs = connState.recentLogs();
+        // appendLog prepends — entry2 is first
+        QCOMPARE(logs.at(0), QStringLiteral("entry2"));
+        QCOMPARE(logs.at(1), QStringLiteral("entry1"));
+    }
+
+    /// Verify appendLog trims to 50 when more than 50 entries are added.
+    void appendLogTrimsAt50() {
+        ConnectionState connState;
+        for (int i = 0; i < 55; ++i) {
+            connState.appendLog(QStringLiteral("log%1").arg(i));
+        }
+        QCOMPARE(connState.recentLogs().size(), 50);
+    }
+
     /// Verify sendMessage sends arbitrary outbound messages.
     void sendMessageWorks() {
         MockServer server;

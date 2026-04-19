@@ -72,8 +72,9 @@ class AudioSessionOrchestrator : public QObject {
     void onSpeechEnded();
     void onOpusFrameEncoded(const QByteArray &opusFrame);
     void onStreamingTimeout();
-    void onInboundAudio(const QByteArray &opusFrame);
-    void onInboundStreamEnd(const QString &reason);
+    void onInboundAudio(const QByteArray &binaryFrame);
+    void onInboundAudioStreamStart(const QString &streamId);
+    void onInboundStreamEnd(const QString &streamId, const QString &reason);
 
   private:
     void transitionTo(State newState);
@@ -81,6 +82,7 @@ class AudioSessionOrchestrator : public QObject {
 
     pairion::audio::PairionAudioCapture *m_capture;
     pairion::audio::PairionOpusEncoder *m_encoder;
+    pairion::audio::PairionOpusEncoder *m_preRollEncoder;
     pairion::audio::PairionAudioPlayback *m_playback;
     pairion::wake::OpenWakewordDetector *m_wakeDetector;
     pairion::vad::SileroVad *m_vad;

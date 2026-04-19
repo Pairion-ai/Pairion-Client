@@ -6,16 +6,16 @@
  *
  * Defines compile-time constants for server connectivity, timing intervals,
  * and application metadata used throughout the client codebase.
+ * The client version string is injected via version.h (CMake configure_file).
  */
+
+#include "version.h"
 
 #include <chrono>
 #include <cstdint>
 #include <QString>
 
 namespace pairion {
-
-/// Client version string reported in DeviceIdentify messages.
-inline constexpr const char *kClientVersion = "0.1.0";
 
 /// Default WebSocket server URL.
 inline constexpr const char *kDefaultServerUrl = "ws://localhost:18789/ws/v1";
@@ -48,6 +48,6 @@ inline constexpr int kPreRollBytes = 6400;
 inline constexpr int kStreamingTimeoutMs = 30000;
 
 /// False-wake suppression window in milliseconds.
-inline constexpr int kWakeSuppresssionMs = 500;
+inline constexpr int kWakeSuppressionMs = 500;
 
 } // namespace pairion

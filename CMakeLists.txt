@@ -1,10 +1,19 @@
 cmake_minimum_required(VERSION 3.25)
-project(pairion VERSION 0.2.0 LANGUAGES CXX)
+project(pairion VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
+
+# --------------------------------------------------------------------------
+# Version header — injected from project VERSION at configure time
+# --------------------------------------------------------------------------
+configure_file(
+    src/core/version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/src/core/version.h
+    @ONLY
+)
 
 # --------------------------------------------------------------------------
 # Dependencies
@@ -49,6 +58,7 @@ add_library(pairion_core STATIC
 )
 target_include_directories(pairion_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}/src/core
 )
 target_link_libraries(pairion_core PUBLIC
     Qt6::Core
@@ -69,6 +79,14 @@ set_target_properties(pairion PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/Info.plist
 )
+
+# --------------------------------------------------------------------------
+# Optional: verbose wake score logging (default OFF)
+# --------------------------------------------------------------------------
+option(PAIRION_WAKE_DIAGNOSTICS "Enable Info-level wake classifier score logging" OFF)
+if(PAIRION_WAKE_DIAGNOSTICS)
+    target_compile_definitions(pairion_core PUBLIC PAIRION_WAKE_DIAGNOSTICS=1)
+endif()
 
 # --------------------------------------------------------------------------
 # Coverage (opt-in via -DPAIRION_COVERAGE=ON)
@@ -156,6 +174,17 @@ add_executable(tst_audio_session_orchestrator
 target_link_libraries(tst_audio_session_orchestrator PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_audio_session_orchestrator COMMAND tst_audio_session_orchestrator)
 
+add_executable(tst_inbound_playback
+    test/tst_inbound_playback.cpp
+    test/mock_server.cpp
+)
+target_link_libraries(tst_inbound_playback PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_inbound_playback COMMAND tst_inbound_playback)
+
+add_executable(tst_constants test/tst_constants.cpp)
+target_link_libraries(tst_constants PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_constants COMMAND tst_constants)
+
 # --------------------------------------------------------------------------
 # Coverage target
 # --------------------------------------------------------------------------
@@ -166,27 +195,28 @@ if(PAIRION_COVERAGE)
         find_program(LCOV lcov)
         find_program(GENHTML genhtml)
         if(LCOV AND GENHTML)
-            set(COVERAGE_IGNORE_PATTERNS "'/opt/homebrew/*' '/usr/*' '/Library/*' '*/test/*' '*/moc_*' '*/qrc_*' '*/main.cpp'")
-            if(APPLE)
-                set(COVERAGE_IGNORE_PATTERNS "'/opt/homebrew/*' '/usr/local/*' '/Library/*' '*/test/*' '*/moc_*' '*/qrc_*' '*/main.cpp'")
-            endif()
             add_custom_target(coverage
                 COMMAND ${LCOV} --directory . --zerocounters
                 COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-            COMMAND ${LCOV} --directory . --capture --output-file coverage.info --ignore-errors inconsistent
-            COMMAND ${LCOV} --remove coverage.info ${COVERAGE_IGNORE_PATTERNS}
-                --output-file coverage_filtered.info --ignore-errors inconsistent,unused
-
-            COMMAND ${GENHTML} coverage_filtered.info --output-directory coverage_report
-                --ignore-errors inconsistent,unmapped,corrupt,category
-
-                COMMAND echo "Coverage report: ${CMAKE_BINARY_DIR}/coverage_report/index.html"
+                COMMAND ${LCOV} --directory . --capture --output-file coverage.info
+                    --ignore-errors inconsistent
+                # Use a CMake script for the filter step so that glob patterns like
+                # */moc_* are passed directly to lcov without shell glob-expansion.
+                COMMAND ${CMAKE_COMMAND}
+                    -DLCOV=${LCOV}
+                    -DINPUT_FILE=${CMAKE_BINARY_DIR}/coverage.info
+                    -DOUTPUT_FILE=${CMAKE_BINARY_DIR}/coverage_filtered.info
+                    -P ${CMAKE_SOURCE_DIR}/cmake/filter_coverage.cmake
+                COMMAND ${GENHTML} coverage_filtered.info --output-directory coverage_report
+                    --ignore-errors inconsistent,unmapped,corrupt,category
+                COMMAND ${CMAKE_COMMAND} -E echo
+                    "Coverage report: ${CMAKE_BINARY_DIR}/coverage_report/index.html"
                 COMMAND ${CMAKE_COMMAND}
                     -DCOVERAGE_FILE=${CMAKE_BINARY_DIR}/coverage_filtered.info
                     -DTHRESHOLD=${PAIRION_COVERAGE_THRESHOLD}
                     -P ${CMAKE_SOURCE_DIR}/cmake/check_coverage.cmake
                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                COMMENT "Generating code coverage report and enforcing ${PAIRION_COVERAGE_THRESHOLD}% threshold (cross-platform ignores)"
+                COMMENT "Generating code coverage report and enforcing ${PAIRION_COVERAGE_THRESHOLD}% threshold"
             )
         else()
             message(WARNING "lcov/genhtml not found — coverage target unavailable on this platform")
