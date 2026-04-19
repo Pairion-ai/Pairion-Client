@@ -45,7 +45,8 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
                               pairion::audio::PairionOpusEncoder *encoder,
                               pairion::ws::PairionWebSocketClient *wsClient,
                               pairion::state::ConnectionState *connState,
-                              pairion::settings::Settings *settings, QThread *encoderThread) {
+                              pairion::settings::Settings *settings, QThread *encoderThread,
+                              QThread *inferenceThread) {
     QString modelDir = pairion::core::ModelDownloader::modelCacheDir();
     pairion::core::OnnxInferenceSession *melSession = nullptr;
     pairion::core::OnnxInferenceSession *embSession = nullptr;
@@ -68,25 +69,38 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
         return;
     }
 
-    auto *wakeDetector = new pairion::wake::OpenWakewordDetector(melSession, embSession, clsSession,
-                                                                 settings->wakeThreshold(), app);
+    // Wake detector and VAD run on the inference thread to avoid blocking
+    // the main thread with ONNX model inference (~ms per frame at 50 fps).
+    // Threshold lowered for M1 validation — openWakeWord produces lower scores
+    // on USB condenser microphones with low native gain. Production tuning will
+    // add gain normalization or use a mic-appropriate threshold.
+    double wakeThreshold = std::min(settings->wakeThreshold(), 0.03);
+    auto *wakeDetector =
+        new pairion::wake::OpenWakewordDetector(melSession, embSession, clsSession, wakeThreshold);
     auto *vad = new pairion::vad::SileroVad(vadSession, settings->vadThreshold(),
-                                            settings->vadSilenceEndMs(), app);
+                                            settings->vadSilenceEndMs());
+    wakeDetector->moveToThread(inferenceThread);
+    vad->moveToThread(inferenceThread);
 
     auto *orchestrator = new pairion::pipeline::AudioSessionOrchestrator(
         capture, encoder, wakeDetector, vad, wsClient, connState, app);
 
-    // Connect capture → encoder (cross-thread, queued automatically)
+    // Connect capture → encoder (cross-thread to encoder thread, queued)
     QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable, encoder,
                      &pairion::audio::PairionOpusEncoder::encodePcmFrame);
-    // Connect capture → wake detector (same thread, direct)
+    // Connect capture → wake detector (cross-thread to inference thread, queued)
     QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable,
                      wakeDetector, &pairion::wake::OpenWakewordDetector::processPcmFrame);
-    // Connect capture → VAD (same thread, direct)
+    // Connect capture → VAD (cross-thread to inference thread, queued)
     QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable, vad,
                      &pairion::vad::SileroVad::processPcmFrame);
 
+    inferenceThread->start();
     encoderThread->start();
+
+    // Warm up the wake detector on the inference thread (not main thread)
+    QMetaObject::invokeMethod(wakeDetector, "warmup", Qt::QueuedConnection);
+
     capture->start();
     orchestrator->startListening();
 
@@ -128,6 +142,9 @@ int main(int argc, char *argv[]) {
     encoderThread->setObjectName(QStringLiteral("EncoderThread"));
     encoder->moveToThread(encoderThread);
 
+    auto *inferenceThread = new QThread(&app);
+    inferenceThread->setObjectName(QStringLiteral("InferenceThread"));
+
     // QML singletons
     qmlRegisterSingletonInstance("Pairion", 1, 0, "ConnectionState", connState);
     qmlRegisterSingletonInstance("Pairion", 1, 0, "Settings", settings);
@@ -142,9 +159,11 @@ int main(int argc, char *argv[]) {
 
     // Lambda to start pipeline when BOTH mic permission and models are ready
     auto tryStartPipeline = [&app, capture, encoder, wsClient, connState, settings, encoderThread,
-                             &micPermissionGranted, &modelsReady]() {
+                             inferenceThread, &micPermissionGranted, &modelsReady]() {
+        qInfo() << "tryStartPipeline: mic=" << micPermissionGranted << "models=" << modelsReady;
         if (micPermissionGranted && modelsReady) {
-            initAudioPipeline(&app, capture, encoder, wsClient, connState, settings, encoderThread);
+            initAudioPipeline(&app, capture, encoder, wsClient, connState, settings, encoderThread,
+                              inferenceThread);
         }
     };
 
@@ -204,6 +223,8 @@ int main(int argc, char *argv[]) {
 
     int result = app.exec();
 
+    inferenceThread->quit();
+    inferenceThread->wait();
     encoderThread->quit();
     encoderThread->wait();
     delete encoder;

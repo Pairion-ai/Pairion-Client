@@ -33,6 +33,8 @@ class OpenWakewordDetector : public QObject {
                                   double threshold = 0.5, QObject *parent = nullptr);
 
   public slots:
+    /// @brief Pre-warm the pipeline with silence so the classifier is ready immediately.
+    void warmup();
     /// @brief Process a 20 ms PCM frame (640 bytes, 16-bit mono 16 kHz).
     void processPcmFrame(const QByteArray &pcm20ms);
 
@@ -66,6 +68,7 @@ class OpenWakewordDetector : public QObject {
 
     static constexpr int kMelChunkSamples = 1280;      ///< 80 ms at 16 kHz
     static constexpr int kMelContextSamples = 480;     ///< 160*3 overlap context
+    static constexpr int kMelRowsPerChunk = 8;         ///< New mel rows per 1280-sample chunk
     static constexpr int kMelFrameWidth = 32;          ///< Floats per mel row
     static constexpr int kMelFramesNeeded = 76;        ///< Mel rows for embedding
     static constexpr int kMelBufferMaxLen = 200;       ///< Max mel rows to keep

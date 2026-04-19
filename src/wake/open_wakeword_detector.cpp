@@ -14,6 +14,8 @@
 #include "open_wakeword_detector.h"
 
 #include <algorithm>
+#include <QDateTime>
+#include <QFile>
 #include <QLoggingCategory>
 
 Q_LOGGING_CATEGORY(lcWake, "pairion.wake")
@@ -26,10 +28,19 @@ OpenWakewordDetector::OpenWakewordDetector(pairion::core::OnnxInferenceSession *
                                            double threshold, QObject *parent)
     : QObject(parent), m_melSession(melSession), m_embeddingSession(embeddingSession),
       m_classifierSession(classifierSession), m_threshold(threshold) {
-    // Pre-fill the raw audio buffer with silence so the mel model has enough
-    // context from the very first real audio chunk. The mel model needs at least
-    // 1280 + 480 = 1760 samples. We pre-fill with enough for the full warmup.
     m_rawAudioBuffer.resize(kMelContextSamples, 0.0f);
+}
+
+void OpenWakewordDetector::warmup() {
+    int warmupChunks = (kMelFramesNeeded / kMelRowsPerChunk) + kEmbFeaturesNeeded + 2;
+    for (int i = 0; i < warmupChunks; ++i) {
+        m_rawAudioBuffer.insert(m_rawAudioBuffer.end(), kMelChunkSamples, 0.0f);
+        m_accumulatedSamples = kMelChunkSamples;
+        processAccumulatedAudio();
+        m_accumulatedSamples = 0;
+    }
+    qCInfo(lcWake) << "Wake detector primed: mel_rows=" << m_melBuffer.size()
+                   << "emb_features=" << m_embFeatures.size();
 }
 
 void OpenWakewordDetector::processPcmFrame(const QByteArray &pcm20ms) {
@@ -63,13 +74,11 @@ void OpenWakewordDetector::processPcmFrame(const QByteArray &pcm20ms) {
 }
 
 void OpenWakewordDetector::processAccumulatedAudio() {
-    // Feed the mel model with the last chunk + 480 samples of context,
-    // matching the Python library's _streaming_melspectrogram behavior.
-    int totalSamples = static_cast<int>(m_rawAudioBuffer.size());
-    int feedSamples = std::min(totalSamples, m_accumulatedSamples + kMelContextSamples);
-    int startIdx = totalSamples - feedSamples;
-
-    std::vector<float> melInput(m_rawAudioBuffer.begin() + startIdx, m_rawAudioBuffer.end());
+    // Feed the mel model with the entire raw audio buffer. The mel Conv layers
+    // produce numerically different (and higher quality) outputs when given the
+    // full audio context rather than just a 1760-sample sliding window.
+    // We cap the buffer at kMaxRawBufferSamples to limit compute.
+    std::vector<float> melInput(m_rawAudioBuffer);
 
     // Stage 1: Melspectrogram
     pairion::core::OnnxTensor melTensor{
@@ -80,12 +89,25 @@ void OpenWakewordDetector::processAccumulatedAudio() {
         return;
     }
 
-    // Extract mel rows (output is [1, 1, N, 32]), append to rolling buffer
+    // Diagnostic: log first mel output shape
+    if (m_melBuffer.empty()) {
+        QString shapeTxt;
+        for (auto d : melOutputs[0].shape) {
+            shapeTxt += QString::number(d) + QStringLiteral(" ");
+        }
+        qCInfo(lcWake) << "First mel output: floats=" << melOutputs[0].data.size() << "shape=["
+                       << shapeTxt.trimmed() << "]"
+                       << "input_samples=" << static_cast<int>(melInput.size());
+    }
+
+    // Extract mel rows from output [1, 1, N, 32]. Only take the LAST 8 rows
+    // (corresponding to the new 1280-sample chunk). Earlier rows are context
+    // overlap that would duplicate already-buffered mel data.
     const auto &melData = melOutputs[0].data;
-    int numMelRows = static_cast<int>(melData.size()) / kMelFrameWidth;
-    // Only take the last rows corresponding to the new chunk
-    // (Python takes all rows produced and appends them)
-    for (int f = 0; f < numMelRows; ++f) {
+    int totalMelRows = static_cast<int>(melData.size()) / kMelFrameWidth;
+    int newRows = std::min(totalMelRows, kMelRowsPerChunk);
+    int startRow = totalMelRows - newRows;
+    for (int f = startRow; f < totalMelRows; ++f) {
         std::vector<float> row(melData.begin() + f * kMelFrameWidth,
                                melData.begin() + (f + 1) * kMelFrameWidth);
         m_melBuffer.push_back(std::move(row));
@@ -102,10 +124,10 @@ void OpenWakewordDetector::processAccumulatedAudio() {
     }
 
     // Take last 76 mel rows, reshape to [1, 76, 32, 1]
-    int startRow = static_cast<int>(m_melBuffer.size()) - kMelFramesNeeded;
+    int embStartRow = static_cast<int>(m_melBuffer.size()) - kMelFramesNeeded;
     std::vector<float> embInput(kMelFramesNeeded * kMelFrameWidth);
     for (int i = 0; i < kMelFramesNeeded; ++i) {
-        const auto &row = m_melBuffer[startRow + i];
+        const auto &row = m_melBuffer[embStartRow + i];
         std::copy(row.begin(), row.end(), embInput.begin() + i * kMelFrameWidth);
     }
 
@@ -151,8 +173,16 @@ void OpenWakewordDetector::runClassifier() {
 
     float score = clsOutputs[0].data[0];
 
-    if (score > 0.1) {
-        qCInfo(lcWake) << "Classifier score:" << score;
+    // Write scores to file for diagnosis (avoids flooding QML log)
+    {
+        static QFile scoreLog(QStringLiteral("/tmp/pairion_wake_scores.csv"));
+        if (!scoreLog.isOpen()) {
+            (void)scoreLog.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        }
+        scoreLog.write((QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs) +
+                        QStringLiteral(",%1\n").arg(static_cast<double>(score), 0, 'f', 8))
+                           .toUtf8());
+        scoreLog.flush();
     }
 
     if (score < m_threshold) {
