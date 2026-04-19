@@ -11,7 +11,7 @@ namespace pairion::settings {
 
 Settings::Settings(QObject *parent) : QObject(parent) {
     QSettings s;
-    m_wakeThreshold = s.value(QStringLiteral("wake/threshold"), 0.5).toDouble();
+    m_wakeThreshold = s.value(QStringLiteral("wake/threshold"), 0.3).toDouble();
     m_vadSilenceEndMs = s.value(QStringLiteral("vad/silence_end_ms"), 800).toInt();
     m_vadThreshold = s.value(QStringLiteral("vad/threshold"), 0.5).toDouble();
     m_audioInputDevice = s.value(QStringLiteral("audio/input_device"), QString()).toString();

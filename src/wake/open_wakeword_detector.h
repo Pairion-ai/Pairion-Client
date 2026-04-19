@@ -5,10 +5,9 @@
  * @brief Three-model openWakeWord ONNX pipeline for wake word detection.
  *
  * Processes PCM audio through a melspectrogram → embedding → classifier chain
- * matching the openWakeWord Python library's data flow. Audio is accumulated
- * in a raw buffer; every 80ms the mel model runs on a sliding window with
- * context overlap. Mel rows feed a rolling buffer for embedding, and embedding
- * features feed a rolling buffer for classification.
+ * matching the openWakeWord Python library's data flow. Uses fixed 1760-sample
+ * sliding window (1280 chunk + 480 context) for mel input to eliminate numerical
+ * drift vs Python reference. Mel rows feed rolling buffer for embedding.
  */
 
 #include "../core/onnx_session.h"

@@ -71,10 +71,7 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
 
     // Wake detector and VAD run on the inference thread to avoid blocking
     // the main thread with ONNX model inference (~ms per frame at 50 fps).
-    // Threshold lowered for M1 validation — openWakeWord produces lower scores
-    // on USB condenser microphones with low native gain. Production tuning will
-    // add gain normalization or use a mic-appropriate threshold.
-    double wakeThreshold = std::min(settings->wakeThreshold(), 0.03);
+    double wakeThreshold = settings->wakeThreshold();
     auto *wakeDetector =
         new pairion::wake::OpenWakewordDetector(melSession, embSession, clsSession, wakeThreshold);
     auto *vad = new pairion::vad::SileroVad(vadSession, settings->vadThreshold(),

@@ -26,15 +26,6 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
 
     connect(m_wakeDetector, &pairion::wake::OpenWakewordDetector::wakeWordDetected, this,
             &AudioSessionOrchestrator::onWakeWordDetected);
-    // M1 bypass: use VAD speech-start as wake trigger until wake word scoring
-    // is tuned (openWakeWord C++ mel pipeline produces 10-25x lower scores than
-    // the Python reference; requires separate investigation).
-    connect(m_vad, &pairion::vad::SileroVad::speechStarted, this, [this]() {
-        if (m_state == State::AwaitingWake) {
-            qCInfo(lcPipeline) << "VAD speech-start triggering wake (M1 bypass)";
-            onWakeWordDetected(1.0f, QByteArray());
-        }
-    });
     connect(m_vad, &pairion::vad::SileroVad::speechEnded, this,
             &AudioSessionOrchestrator::onSpeechEnded);
     connect(m_encoder, &pairion::audio::PairionOpusEncoder::opusFrameEncoded, this,

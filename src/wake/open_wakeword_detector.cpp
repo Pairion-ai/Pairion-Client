@@ -50,11 +50,14 @@ void OpenWakewordDetector::processPcmFrame(const QByteArray &pcm20ms) {
         m_preRollBuffer = m_preRollBuffer.right(kPreRollBytes);
     }
 
-    // Convert int16 to float32 and append to raw audio buffer
+    // Convert int16 to float32 at int16 scale (NOT normalized to [-1,1]).
+    // openWakeWord Python reference passes raw int16-scale float32 values
+    // to the mel model — dividing by 32768 produces near-zero mel outputs
+    // and breaks the embedding→classifier chain.
     int sampleCount = pcm20ms.size() / 2;
     const auto *pcmData = reinterpret_cast<const int16_t *>(pcm20ms.constData());
     for (int i = 0; i < sampleCount; ++i) {
-        m_rawAudioBuffer.push_back(static_cast<float>(pcmData[i]) / 32768.0f);
+        m_rawAudioBuffer.push_back(static_cast<float>(pcmData[i]));
     }
     m_accumulatedSamples += sampleCount;
 
@@ -74,11 +77,15 @@ void OpenWakewordDetector::processPcmFrame(const QByteArray &pcm20ms) {
 }
 
 void OpenWakewordDetector::processAccumulatedAudio() {
-    // Feed the mel model with the entire raw audio buffer. The mel Conv layers
-    // produce numerically different (and higher quality) outputs when given the
-    // full audio context rather than just a 1760-sample sliding window.
-    // We cap the buffer at kMaxRawBufferSamples to limit compute.
-    std::vector<float> melInput(m_rawAudioBuffer);
+    // Fixed sliding window (1760 samples = 1280 chunk + 480 context) to match
+    // Python openWakeWord _get_melspectrogram exactly. Using full buffer caused
+    // numerical drift in the mel ONNX model.
+    const int windowSize = kMelChunkSamples + kMelContextSamples;
+    if (static_cast<int>(m_rawAudioBuffer.size()) < windowSize) {
+        return;
+    }
+
+    std::vector<float> melInput(m_rawAudioBuffer.end() - windowSize, m_rawAudioBuffer.end());
 
     // Stage 1: Melspectrogram
     pairion::core::OnnxTensor melTensor{
@@ -110,6 +117,12 @@ void OpenWakewordDetector::processAccumulatedAudio() {
     for (int f = startRow; f < totalMelRows; ++f) {
         std::vector<float> row(melData.begin() + f * kMelFrameWidth,
                                melData.begin() + (f + 1) * kMelFrameWidth);
+        // Apply openWakeWord mel transform: spec/10 + 2 (Python reference:
+        // utils.py _get_melspectrogram default melspec_transform).
+        // Required to match the scale the embedding model was trained on.
+        for (auto &v : row) {
+            v = v / 10.0f + 2.0f;
+        }
         m_melBuffer.push_back(std::move(row));
     }
 
@@ -185,7 +198,7 @@ void OpenWakewordDetector::runClassifier() {
         scoreLog.flush();
     }
 
-    if (score < m_threshold) {
+    if (score < static_cast<float>(m_threshold)) {
         return;
     }
 
