@@ -661,6 +661,7 @@ The `Logger` class installs a custom message handler that intercepts all `qDebug
 | `pairion.audio.capture` | pairion_audio_capture.cpp | Microphone capture start/stop |
 | `pairion.audio.opus.enc` | pairion_opus_encoder.cpp | Opus encoding |
 | `pairion.audio.opus.dec` | pairion_opus_decoder.cpp | Opus decoding |
+| `pairion.audio.playback` | pairion_audio_playback.cpp | QAudioSink initialization and restart warnings |
 | `pairion.pipeline` | audio_session_orchestrator.cpp | Pipeline state machine transitions |
 | `pairion.protocol.binary` | binary_codec.cpp | Binary frame encode/decode |
 | `pairion.vad` | silero_vad.cpp | VAD inference and state changes |

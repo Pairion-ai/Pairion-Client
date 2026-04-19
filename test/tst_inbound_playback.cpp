@@ -158,13 +158,34 @@ class TestInboundPlayback : public QObject {
         QCOMPARE(errorSpy.count(), 0);
     }
 
-    /// Verify start() and stop() are idempotent.
-    void startStopIdempotent() {
+    /// Verify start() is a no-op when not in StoppedState, and restarts when stopped.
+    void startRestartsBehavior() {
         PairionAudioPlayback playback;
-        playback.start();
-        playback.start(); // second call — sink already started
+        playback.start();  // sink is IdleState from constructor — no-op
+        playback.start();  // still IdleState — no-op; no crash
+        playback.stop();   // sink now StoppedState, m_audioDevice nulled
+        playback.start();  // StoppedState → restarts sink; no crash
+        playback.stop();   // clean up
+    }
+
+    /// Verify stop() is safe to call when already stopped.
+    void stopIdempotent() {
+        PairionAudioPlayback playback;
         playback.stop();
-        playback.stop(); // second call — already stopped
+        playback.stop(); // second call — already stopped; no crash
+    }
+
+    /// Verify preparePlayback() after stop() restarts the sink (covers the StoppedState branch).
+    void preparePlaybackAfterStopRestartsDevice() {
+        PairionAudioPlayback playback;
+        playback.handleStreamEnd(QStringLiteral("normal")); // stops the sink
+        // preparePlayback() must restart the stopped sink without crashing.
+        playback.preparePlayback();
+        // A PCM frame delivered now should set m_isSpeaking=true regardless of hardware.
+        QSignalSpy stateSpy(&playback, &PairionAudioPlayback::speakingStateChanged);
+        playback.handlePcmFrame(QByteArray(640, '\0'));
+        QCOMPARE(stateSpy.count(), 1);
+        QCOMPARE(stateSpy.at(0).at(0).toString(), QStringLiteral("speaking"));
     }
 
     /// Verify the silence timer transitions speakingState to "idle" after 500 ms of no frames.
