@@ -33,8 +33,8 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
     connect(m_encoder, &pairion::audio::PairionOpusEncoder::opusFrameEncoded, this,
             &AudioSessionOrchestrator::onOpusFrameEncoded);
     if (m_playback) {
-        connect(m_playback, &pairion::audio::PairionAudioPlayback::speakingStateChanged, m_connState,
-                &pairion::state::ConnectionState::setAgentState);
+        connect(m_playback, &pairion::audio::PairionAudioPlayback::speakingStateChanged,
+                m_connState, &pairion::state::ConnectionState::setAgentState);
     }
 
     m_streamingTimeout.setSingleShot(true);
@@ -177,17 +177,20 @@ void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {
     if (decoded.payload.isEmpty()) {
         return;
     }
-    if (m_playback) m_playback->handleOpusFrame(decoded.payload);
+    if (m_playback)
+        m_playback->handleOpusFrame(decoded.payload);
 }
 
 void AudioSessionOrchestrator::onInboundAudioStreamStart(const QString &streamId) {
     qCInfo(lcPipeline) << "Inbound audio stream started:" << streamId;
-    if (m_playback) m_playback->preparePlayback();
+    if (m_playback)
+        m_playback->preparePlayback();
 }
 
 void AudioSessionOrchestrator::onInboundStreamEnd(const QString &streamId, const QString &reason) {
     qCInfo(lcPipeline) << "Inbound audio stream ended:" << streamId << "reason:" << reason;
-    if (m_playback) m_playback->handleStreamEnd(reason);
+    if (m_playback)
+        m_playback->handleStreamEnd(reason);
 }
 
 } // namespace pairion::pipeline

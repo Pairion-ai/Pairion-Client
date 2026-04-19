@@ -120,7 +120,7 @@ class TestSettings : public QObject {
         capture.start();
         capture.start(); // idempotent — already running
         capture.stop();
-        capture.stop();  // idempotent — already stopped
+        capture.stop(); // idempotent — already stopped
     }
 
     /// Verify configure() triggers stop()+start() when already running.

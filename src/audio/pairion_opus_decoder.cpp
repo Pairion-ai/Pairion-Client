@@ -35,7 +35,8 @@ bool PairionOpusDecoder::isValid() const {
 }
 
 void PairionOpusDecoder::decodeOpusFrame(const QByteArray &opusFrame) {
-    // LCOV_EXCL_START — only reachable if constructor failed (libopus broken); always valid in tests
+    // LCOV_EXCL_START — only reachable if constructor failed (libopus broken); always valid in
+    // tests
     if (m_decoder == nullptr) {
         emit decoderError(QStringLiteral("Decoder not initialized"));
         return;

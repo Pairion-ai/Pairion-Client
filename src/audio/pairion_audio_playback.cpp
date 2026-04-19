@@ -4,7 +4,9 @@
  */
 
 #include "pairion_audio_playback.h"
+
 #include "pairion_opus_decoder.h"
+
 #include <QAudioFormat>
 #include <QMediaDevices>
 
@@ -12,8 +14,10 @@ namespace pairion::audio {
 
 PairionAudioPlayback::PairionAudioPlayback(QObject *parent) : QObject(parent) {
     m_decoder = new PairionOpusDecoder(this);
-    connect(m_decoder, &PairionOpusDecoder::pcmFrameDecoded, this, &PairionAudioPlayback::handlePcmFrame);
-    connect(m_decoder, &PairionOpusDecoder::decoderError, this, &PairionAudioPlayback::playbackError);
+    connect(m_decoder, &PairionOpusDecoder::pcmFrameDecoded, this,
+            &PairionAudioPlayback::handlePcmFrame);
+    connect(m_decoder, &PairionOpusDecoder::decoderError, this,
+            &PairionAudioPlayback::playbackError);
     initAudioSink();
     m_silenceTimer = new QTimer(this);
     m_silenceTimer->setSingleShot(true);
@@ -39,7 +43,8 @@ void PairionAudioPlayback::initAudioSink() {
 }
 
 void PairionAudioPlayback::start() {
-    if (m_sink) m_sink->start();
+    if (m_sink)
+        m_sink->start();
 }
 
 void PairionAudioPlayback::preparePlayback() {
@@ -50,9 +55,11 @@ void PairionAudioPlayback::preparePlayback() {
 }
 
 void PairionAudioPlayback::stop() {
-    if (m_sink) m_sink->stop();
+    if (m_sink)
+        m_sink->stop();
     m_jitterBuffer.clear();
-    if (m_silenceTimer) m_silenceTimer->stop();
+    if (m_silenceTimer)
+        m_silenceTimer->stop();
     if (m_isSpeaking) {
         m_isSpeaking = false;
         emit speakingStateChanged("idle");
@@ -60,7 +67,8 @@ void PairionAudioPlayback::stop() {
 }
 
 void PairionAudioPlayback::handleOpusFrame(const QByteArray &opusFrame) {
-    if (m_decoder) m_decoder->decodeOpusFrame(opusFrame);
+    if (m_decoder)
+        m_decoder->decodeOpusFrame(opusFrame);
 }
 
 void PairionAudioPlayback::handlePcmFrame(const QByteArray &pcm) {

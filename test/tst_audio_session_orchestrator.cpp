@@ -37,7 +37,8 @@ class TestAudioSessionOrchestrator : public QObject {
         OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
         SileroVad vad(&vadSess, 0.5, 800);
 
-        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState, &playback);
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState,
+                                      &playback);
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
     }
 
@@ -258,7 +259,7 @@ class TestAudioSessionOrchestrator : public QObject {
         SileroVad vad(&vadSess, 0.5, 800);
 
         AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
-        orch.startListening(); // AwaitingWake — not Streaming
+        orch.startListening();                              // AwaitingWake — not Streaming
         emit encoder.opusFrameEncoded(QByteArray("frame")); // must be ignored
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
     }
@@ -315,7 +316,7 @@ class TestAudioSessionOrchestrator : public QObject {
         // Each frame = 4-byte stream-ID prefix + Opus payload.
         // Opus payload must be smaller than raw PCM (640 bytes), proving encoding occurred.
         for (const auto &frame : server.receivedBinaryMessages()) {
-            QVERIFY(frame.size() > 4);      // non-empty beyond prefix
+            QVERIFY(frame.size() > 4);       // non-empty beyond prefix
             QVERIFY(frame.size() < 4 + 640); // Opus-compressed, not raw PCM
         }
 

@@ -78,8 +78,7 @@ class TestInboundPlayback : public QObject {
         // Server sends a valid Opus-encoded binary frame with the stream-ID prefix.
         QByteArray opus = encodeSilenceFrame();
         QVERIFY(!opus.isEmpty());
-        QByteArray binaryFrame =
-            pairion::protocol::BinaryCodec::encodeBinaryFrame(streamId, opus);
+        QByteArray binaryFrame = pairion::protocol::BinaryCodec::encodeBinaryFrame(streamId, opus);
         server.sendBinaryToClient(binaryFrame);
         QTest::qWait(400);
 

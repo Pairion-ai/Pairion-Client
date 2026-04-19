@@ -41,7 +41,8 @@ void ModelDownloader::checkAndDownload() {
     m_completedCount = 0;
     m_pending.clear();
 
-    // LCOV_EXCL_START — manifest is always empty in unit tests (resource not embedded in test binaries)
+    // LCOV_EXCL_START — manifest is always empty in unit tests (resource not embedded in test
+    // binaries)
     for (const auto &entry : manifest) {
         QString path = modelPath(entry.name);
         if (QFile::exists(path) && verifyFile(path, entry.sha256)) {
@@ -58,7 +59,8 @@ void ModelDownloader::checkAndDownload() {
         return;
     }
 
-    // LCOV_EXCL_START — unreachable in unit tests: m_pending is always empty (manifest has no entries)
+    // LCOV_EXCL_START — unreachable in unit tests: m_pending is always empty (manifest has no
+    // entries)
     qCInfo(lcModelDl) << "Downloading" << m_pending.size() << "model(s)";
     downloadNext();
     // LCOV_EXCL_STOP
@@ -71,7 +73,8 @@ QList<ModelDownloader::ModelEntry> ModelDownloader::loadManifest() {
         return {};
     }
 
-    // LCOV_EXCL_START — parse/iterate path unreachable in unit tests (manifest resource not embedded)
+    // LCOV_EXCL_START — parse/iterate path unreachable in unit tests (manifest resource not
+    // embedded)
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &err);
     if (err.error != QJsonParseError::NoError) {
@@ -91,7 +94,8 @@ QList<ModelDownloader::ModelEntry> ModelDownloader::loadManifest() {
 }
 
 // LCOV_EXCL_START — verifyFile, downloadNext, onDownloadFinished are unreachable in unit tests
-// (manifest resource not embedded in test binaries → m_pending always empty → download never starts)
+// (manifest resource not embedded in test binaries → m_pending always empty → download never
+// starts)
 bool ModelDownloader::verifyFile(const QString &path, const QByteArray &expectedSha256) {
     if (expectedSha256.isEmpty()) {
         qCWarning(lcModelDl) << "Empty SHA-256 hash for" << path

@@ -16,9 +16,7 @@ class TestConstants : public QObject {
 
   private slots:
     /// kClientVersion must be non-empty (injected by CMake configure_file).
-    void clientVersionIsNonEmpty() {
-        QVERIFY(qstrlen(pairion::kClientVersion) > 0);
-    }
+    void clientVersionIsNonEmpty() { QVERIFY(qstrlen(pairion::kClientVersion) > 0); }
 
     /// kClientVersion must equal the CMake project VERSION (0.3.0).
     void clientVersionIsExpected() {
@@ -26,9 +24,7 @@ class TestConstants : public QObject {
     }
 
     /// kWakeSuppressionMs (correct spelling) is positive.
-    void wakeSuppressionMsIsPositive() {
-        QVERIFY(pairion::kWakeSuppressionMs > 0);
-    }
+    void wakeSuppressionMsIsPositive() { QVERIFY(pairion::kWakeSuppressionMs > 0); }
 };
 
 QTEST_GUILESS_MAIN(TestConstants)

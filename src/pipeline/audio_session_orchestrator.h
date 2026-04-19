@@ -10,8 +10,8 @@
  */
 
 #include "../audio/pairion_audio_capture.h"
-#include "../audio/pairion_opus_encoder.h"
 #include "../audio/pairion_audio_playback.h"
+#include "../audio/pairion_opus_encoder.h"
 #include "../state/connection_state.h"
 #include "../vad/silero_vad.h"
 #include "../wake/open_wakeword_detector.h"
@@ -41,14 +41,11 @@ class AudioSessionOrchestrator : public QObject {
     /**
      * @brief Construct the orchestrator with all pipeline dependencies.
      */
-    AudioSessionOrchestrator(pairion::audio::PairionAudioCapture *capture,
-                             pairion::audio::PairionOpusEncoder *encoder,
-                             pairion::wake::OpenWakewordDetector *wakeDetector,
-                             pairion::vad::SileroVad *vad,
-                             pairion::ws::PairionWebSocketClient *wsClient,
-                             pairion::state::ConnectionState *connState,
-                             pairion::audio::PairionAudioPlayback *playback = nullptr,
-                             QObject *parent = nullptr);
+    AudioSessionOrchestrator(
+        pairion::audio::PairionAudioCapture *capture, pairion::audio::PairionOpusEncoder *encoder,
+        pairion::wake::OpenWakewordDetector *wakeDetector, pairion::vad::SileroVad *vad,
+        pairion::ws::PairionWebSocketClient *wsClient, pairion::state::ConnectionState *connState,
+        pairion::audio::PairionAudioPlayback *playback = nullptr, QObject *parent = nullptr);
 
     /// @brief Current pipeline state.
     State state() const;

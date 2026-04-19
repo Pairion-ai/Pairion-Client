@@ -100,8 +100,10 @@ class TestWakeDetector : public QObject {
         // Enqueue outputs for a second classification attempt.
         // After the first pass the detector has mel buffer and emb features populated,
         // so a few new frames will quickly trigger mel → emb → classifier again.
-        for (int i = 0; i < 5; ++i) enqueueMelOutput(mel);
-        for (int i = 0; i < 5; ++i) enqueueEmbOutput(emb);
+        for (int i = 0; i < 5; ++i)
+            enqueueMelOutput(mel);
+        for (int i = 0; i < 5; ++i)
+            enqueueEmbOutput(emb);
         int clsCountBefore = cls.runCount();
         enqueueClsOutput(cls, 0.9f);
 

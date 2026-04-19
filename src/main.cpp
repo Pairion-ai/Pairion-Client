@@ -16,6 +16,7 @@
  */
 
 #include "audio/pairion_audio_capture.h"
+#include "audio/pairion_audio_playback.h"
 #include "audio/pairion_opus_encoder.h"
 #include "core/constants.h"
 #include "core/device_identity.h"
@@ -28,7 +29,6 @@
 #include "vad/silero_vad.h"
 #include "wake/open_wakeword_detector.h"
 #include "ws/pairion_websocket_client.h"
-#include "audio/pairion_audio_playback.h"
 
 #include <QGuiApplication>
 #include <QNetworkAccessManager>

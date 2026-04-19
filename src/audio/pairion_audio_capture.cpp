@@ -79,7 +79,8 @@ void PairionAudioCapture::start() {
 
     connect(m_ioDevice, &QIODevice::readyRead, this, &PairionAudioCapture::onAudioDataReady);
     m_running = true;
-    qCInfo(lcCapture) << "Audio capture started:" << m_configuredSampleRate << "Hz," << kChannels << "ch";
+    qCInfo(lcCapture) << "Audio capture started:" << m_configuredSampleRate << "Hz," << kChannels
+                      << "ch";
 }
 
 void PairionAudioCapture::stop() {
