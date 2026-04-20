@@ -98,6 +98,7 @@ class PairionAudioPlayback : public QObject {
     PairionOpusDecoder *m_decoder = nullptr;
     QQueue<QByteArray> m_jitterBuffer;
     QTimer *m_silenceTimer = nullptr;
+    QTimer *m_drainTimer = nullptr;
     bool m_isSpeaking = false;
 
     static constexpr int kJitterMs = 50;

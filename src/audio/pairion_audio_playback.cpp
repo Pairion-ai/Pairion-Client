@@ -30,6 +30,26 @@ PairionAudioPlayback::PairionAudioPlayback(QObject *parent) : QObject(parent) {
             emit speakingStateChanged("idle");
         }
     });
+
+    // Drain timer: flushes jitter buffer to sink after stream end so the tail
+    // of a long TTS response is not dropped when the sink buffer overflows.
+    m_drainTimer = new QTimer(this);
+    m_drainTimer->setInterval(20); // one Opus frame period
+    connect(m_drainTimer, &QTimer::timeout, this, [this]() {
+        while (!m_jitterBuffer.isEmpty() && m_audioDevice) {
+            QByteArray &head = m_jitterBuffer.head();
+            qint64 written = m_audioDevice->write(head);
+            if (written <= 0)
+                break;
+            if (written < static_cast<qint64>(head.size())) {
+                head = head.mid(static_cast<int>(written));
+                break;
+            }
+            m_jitterBuffer.dequeue();
+        }
+        if (m_jitterBuffer.isEmpty())
+            m_drainTimer->stop();
+    });
 }
 
 PairionAudioPlayback::~PairionAudioPlayback() {
@@ -76,6 +96,8 @@ void PairionAudioPlayback::preparePlayback() {
 }
 
 void PairionAudioPlayback::stop() {
+    if (m_drainTimer)
+        m_drainTimer->stop();
     if (m_sink)
         m_sink->stop();
     m_audioDevice = nullptr;
@@ -123,15 +145,22 @@ void PairionAudioPlayback::handleStreamEnd(const QString &reason) {
         m_isSpeaking = false;
         emit speakingStateChanged("idle");
     }
-    m_jitterBuffer.clear();
     if (reason != "normal") {
-        // Abnormal end: discard buffered audio immediately.
+        // Abnormal end: discard everything immediately.
+        if (m_drainTimer)
+            m_drainTimer->stop();
+        m_jitterBuffer.clear();
         if (m_sink)
             m_sink->stop();
         m_audioDevice = nullptr;
         emit playbackError("Stream ended with reason: " + reason);
+        return;
     }
-    // Normal end: sink keeps draining the buffer so the last syllables play to completion.
+    // Normal end: flush jitter buffer to sink via timer so the tail of long
+    // responses is not dropped when the sink buffer overflows. Sink continues
+    // draining its internal buffer — do NOT stop it.
+    if (!m_jitterBuffer.isEmpty())
+        m_drainTimer->start();
 }
 
 } // namespace pairion::audio
