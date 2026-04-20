@@ -72,6 +72,7 @@ class AudioSessionOrchestrator : public QObject {
     void onInboundAudio(const QByteArray &binaryFrame);
     void onInboundAudioStreamStart(const QString &streamId);
     void onInboundStreamEnd(const QString &streamId, const QString &reason);
+    void onTtsPlaybackStarted();
 
   private:
     void transitionTo(State newState);

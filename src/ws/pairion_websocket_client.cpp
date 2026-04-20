@@ -131,6 +131,7 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
                 m_connState->setTranscriptPartial(m.text);
                 emit transcriptPartialReceived(m.text);
             } else if constexpr (std::is_same_v<T, protocol::TranscriptFinal>) {
+                qCInfo(lcWs) << "TranscriptFinal received:" << m.text;
                 m_connState->setTranscriptFinal(m.text);
                 emit transcriptFinalReceived(m.text);
             } else if constexpr (std::is_same_v<T, protocol::AgentStateChange>) {

@@ -35,6 +35,12 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
     if (m_playback) {
         connect(m_playback, &pairion::audio::PairionAudioPlayback::speakingStateChanged,
                 m_connState, &pairion::state::ConnectionState::setAgentState);
+        connect(m_playback, &pairion::audio::PairionAudioPlayback::speakingStateChanged, this,
+                [this](const QString &state) {
+                    if (state == QLatin1String("speaking")) {
+                        onTtsPlaybackStarted();
+                    }
+                });
     }
 
     m_streamingTimeout.setSingleShot(true);
@@ -170,6 +176,14 @@ void AudioSessionOrchestrator::transitionTo(State newState) {
                                                   "ending_speech"};
     m_state = newState;
     m_connState->setVoiceState(QString::fromUtf8(kStateNames[static_cast<int>(newState)]));
+}
+
+void AudioSessionOrchestrator::onTtsPlaybackStarted() {
+    if (m_state != State::Streaming) {
+        return;
+    }
+    qCInfo(lcPipeline) << "TTS playback started — ending upload stream to prevent mic loopback";
+    endStream(QStringLiteral("normal"));
 }
 
 void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {

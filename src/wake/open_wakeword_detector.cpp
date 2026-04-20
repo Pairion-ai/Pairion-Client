@@ -196,8 +196,6 @@ void OpenWakewordDetector::runClassifier() {
 
 #ifdef PAIRION_WAKE_DIAGNOSTICS
     qCInfo(lcWake) << "Wake classifier score:" << score;
-#else
-    qCDebug(lcWake) << "Wake classifier score:" << score;
 #endif
 
     if (score < static_cast<float>(m_threshold)) {
