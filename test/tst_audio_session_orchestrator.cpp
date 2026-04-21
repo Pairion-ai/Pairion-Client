@@ -160,9 +160,10 @@ class TestAudioSessionOrchestrator : public QObject {
         emit vad.speechEnded(); // → ConversationWaiting, gate = true
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
 
-        // Server audio response ends → gate released
+        // Server audio response ends → cooldown starts, then gate released
         emit wsClient.audioStreamEndOutReceived(QStringLiteral("out-1"),
                                                 QStringLiteral("normal"));
+        QTest::qWait(1200); // wait for kPostPlaybackCooldownMs (1000 ms) to expire
 
         // VAD detects user speech — should start new stream
         emit vad.speechStarted();
@@ -451,9 +452,10 @@ class TestAudioSessionOrchestrator : public QObject {
         emit vad.speechEnded(); // → ConversationWaiting, gate = true
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
 
-        // Server sends back an audio response — stream ends → gate released
+        // Server sends back an audio response — stream ends → cooldown → gate released
         emit wsClient.audioStreamEndOutReceived(QStringLiteral("out-1"),
                                                 QStringLiteral("normal"));
+        QTest::qWait(1200); // wait for kPostPlaybackCooldownMs (1000 ms) to expire
 
         // Now VAD fires — should trigger new stream
         emit vad.speechStarted();

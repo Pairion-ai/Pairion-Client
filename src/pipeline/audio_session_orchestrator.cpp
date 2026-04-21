@@ -56,6 +56,16 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
     connect(&m_conversationIdleTimer, &QTimer::timeout, this,
             &AudioSessionOrchestrator::onConversationIdleTimeout);
 
+    m_postPlaybackCooldown.setSingleShot(true);
+    connect(&m_postPlaybackCooldown, &QTimer::timeout, this, [this]() {
+        m_playbackActive = false;
+        if (m_state == State::ConversationWaiting) {
+            m_vad->reset();
+            m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
+            qCInfo(lcPipeline) << "Post-playback cooldown expired — mic open for next utterance";
+        }
+    });
+
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::conversationEndedReceived, this,
             &AudioSessionOrchestrator::onConversationEnded);
 
@@ -280,14 +290,15 @@ void AudioSessionOrchestrator::onInboundStreamEnd(const QString &streamId, const
     qCInfo(lcPipeline) << "Inbound audio stream ended:" << streamId << "reason:" << reason;
     if (m_playback)
         m_playback->handleStreamEnd(reason);
-    // Release the VAD gate. handleStreamEnd() may have already cleared it via
-    // speakingStateChanged("idle") → onTtsPlaybackFinished(); this covers the case
-    // where no audio was played (m_isSpeaking was never set).
-    m_playbackActive = false;
+    // Start cooldown before releasing the VAD gate. The OS audio buffer may still
+    // hold several hundred milliseconds of TTS audio; releasing immediately causes
+    // VAD to pick up the tail as speech and trigger a false new stream.
     if (m_state == State::ConversationWaiting) {
-        m_vad->reset();
-        m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
-        qCInfo(lcPipeline) << "Inbound stream ended — VAD open, ready for next utterance";
+        m_postPlaybackCooldown.start(kPostPlaybackCooldownMs);
+        qCInfo(lcPipeline) << "Inbound stream ended — starting" << kPostPlaybackCooldownMs
+                           << "ms post-playback cooldown";
+    } else {
+        m_playbackActive = false;
     }
 }
 

@@ -100,9 +100,13 @@ class AudioSessionOrchestrator : public QObject {
     bool m_conversationActive = false;
     bool m_playbackActive = false;
     QTimer m_conversationIdleTimer;
+    QTimer m_postPlaybackCooldown;
 
     static constexpr int kStreamingTimeoutMs = 30000;
     static constexpr int kConversationIdleTimeoutMs = 30000;
+    /// Delay after inbound stream ends before reopening the mic, to let the OS
+    /// audio buffer drain so TTS loopback cannot trigger a false speechStarted.
+    static constexpr int kPostPlaybackCooldownMs = 1000;
 };
 
 } // namespace pairion::pipeline
