@@ -203,10 +203,34 @@ struct UnderBreathAck {
     std::optional<QString> acknowledgementType;
 };
 
+/**
+ * @brief Server command to pan and zoom the globe to a specific geographic location.
+ *
+ * Emitted by the server when Jarvis calls the focus_map tool. Zoom levels and their
+ * approximate map scale factors: continent (1.2×), country (1.8×), region (2.8×), city (4.0×).
+ */
+struct MapFocus {
+    static constexpr const char *kType = "MapFocus";
+    double lat = 0.0;
+    double lon = 0.0;
+    QString label;
+    QString zoom;
+};
+
+/**
+ * @brief Server command to clear the current map focus and resume globe auto-scroll.
+ *
+ * Emitted after a 2-minute idle timeout since the last MapFocus, or on an ending phrase.
+ */
+struct MapClear {
+    static constexpr const char *kType = "MapClear";
+};
+
 /// Variant of all inbound text-frame message types.
 using InboundMessage =
     std::variant<SessionOpened, SessionClosed, HeartbeatPong, ErrorMessage, AgentStateChange,
                  TranscriptPartial, TranscriptFinal, LlmTokenStream, ToolCallStarted,
-                 ToolCallCompleted, AudioStreamStartOut, AudioStreamEndOut, UnderBreathAck>;
+                 ToolCallCompleted, AudioStreamStartOut, AudioStreamEndOut, UnderBreathAck,
+                 MapFocus, MapClear>;
 
 } // namespace pairion::protocol

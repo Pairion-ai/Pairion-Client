@@ -1,7 +1,7 @@
 /**
  * @file tst_connection_state.cpp
- * @brief Unit tests for ConnectionState, covering backgroundContext property:
- *        default value, setter, signal emission, and no-op on same value.
+ * @brief Unit tests for ConnectionState, covering backgroundContext and mapFocus properties:
+ *        default values, setters, signal emission, and no-op on same value.
  */
 
 #include "../src/state/connection_state.h"
@@ -57,6 +57,52 @@ class TestConnectionState : public QObject {
 
         QCOMPARE(spy.count(), 3);
         QCOMPARE(cs.backgroundContext(), QStringLiteral("space"));
+    }
+
+    /// mapFocusActive defaults to false.
+    void mapFocusDefaultInactive() {
+        ConnectionState cs;
+        QCOMPARE(cs.mapFocusActive(), false);
+    }
+
+    /// setMapFocus activates focus and stores all fields.
+    void mapFocusSetAndGet() {
+        ConnectionState cs;
+        cs.setMapFocus(35.6762, 139.6503, QStringLiteral("Tokyo, Japan"),
+                       QStringLiteral("city"));
+        QCOMPARE(cs.mapFocusActive(), true);
+        QCOMPARE(cs.mapFocusLat(), 35.6762);
+        QCOMPARE(cs.mapFocusLon(), 139.6503);
+        QCOMPARE(cs.mapFocusLabel(), QStringLiteral("Tokyo, Japan"));
+        QCOMPARE(cs.mapFocusZoom(), QStringLiteral("city"));
+    }
+
+    /// setMapFocus emits mapFocusChanged.
+    void mapFocusEmitsSignal() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::mapFocusChanged);
+        cs.setMapFocus(35.6762, 139.6503, QStringLiteral("Tokyo, Japan"),
+                       QStringLiteral("city"));
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// clearMapFocus deactivates the focus and emits mapFocusChanged.
+    void mapFocusClearDeactivates() {
+        ConnectionState cs;
+        cs.setMapFocus(35.6762, 139.6503, QStringLiteral("Tokyo, Japan"),
+                       QStringLiteral("city"));
+        QSignalSpy spy(&cs, &ConnectionState::mapFocusChanged);
+        cs.clearMapFocus();
+        QCOMPARE(cs.mapFocusActive(), false);
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// clearMapFocus does not emit when already inactive.
+    void mapFocusClearNoEmitWhenAlreadyInactive() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::mapFocusChanged);
+        cs.clearMapFocus();
+        QCOMPARE(spy.count(), 0);
     }
 };
 

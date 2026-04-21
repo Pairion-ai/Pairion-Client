@@ -149,6 +149,12 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
             } else if constexpr (std::is_same_v<T, protocol::AudioStreamEndOut>) {
                 qCInfo(lcWs) << "Inbound audio stream end:" << m.streamId << m.reason;
                 emit audioStreamEndOutReceived(m.streamId, m.reason);
+            } else if constexpr (std::is_same_v<T, protocol::MapFocus>) {
+                qCInfo(lcWs) << "Map focus:" << m.label << "zoom:" << m.zoom;
+                m_connState->setMapFocus(m.lat, m.lon, m.label, m.zoom);
+            } else if constexpr (std::is_same_v<T, protocol::MapClear>) {
+                qCInfo(lcWs) << "Map clear";
+                m_connState->clearMapFocus();
             }
         },
         msg);

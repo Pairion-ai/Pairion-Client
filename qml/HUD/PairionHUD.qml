@@ -56,6 +56,14 @@ Item {
         opacity: ConnectionState.backgroundContext === "earth" ? 1.0 : 0.0
         Behavior on opacity { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
 
+        // Server-driven map focus: Jarvis focuses the globe via the MapFocus WebSocket message.
+        // Setting serverFocus to null (MapClear) resumes auto-scroll.
+        serverFocus: ConnectionState.mapFocusActive
+                     ? ({ "lat":  ConnectionState.mapFocusLat,
+                          "lon":  ConnectionState.mapFocusLon,
+                          "zoom": ConnectionState.mapFocusZoom })
+                     : null
+
         pins: [
             { lat: 32.7767, lon: -96.7970, city: "Dallas",    headline: "Market Volatility" },
             { lat: 51.5074, lon:  -0.1278, city: "London",    headline: "Climate Summit" },
@@ -65,17 +73,19 @@ Item {
         ]
     }
 
-    // ── Ring system (centered over the Atlantic) ──────────────────────────────
+    // ── Ring system — visible only while Jarvis is speaking ──────────────────
 
     RingSystem {
         id: rings
-        hudState: ConnectionState.hudState
+        hudState: ConnectionState.agentState
 
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.horizontalCenterOffset: -(parent.width * 0.18)
-        anchors.top: topBar.bottom
+        anchors.left:   parent.left
+        anchors.right:  parent.right
+        anchors.top:    topBar.bottom
         anchors.bottom: dashboardPanels.top
-        width: parent.width * 0.7
+
+        opacity: ConnectionState.agentState === "speaking" ? 1.0 : 0.0
+        Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } }
     }
 
     // ── Top bar ───────────────────────────────────────────────────────────────

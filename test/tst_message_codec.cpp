@@ -321,6 +321,36 @@ class TestMessageCodec : public QObject {
         QVERIFY(!msg->acknowledgementType.has_value());
     }
 
+    /// Verify MapFocus deserializes all fields correctly.
+    void deserializeMapFocus() {
+        QJsonObject obj;
+        obj["type"] = QStringLiteral("MapFocus");
+        obj["lat"]   = 35.6762;
+        obj["lon"]   = 139.6503;
+        obj["label"] = QStringLiteral("Tokyo, Japan");
+        obj["zoom"]  = QStringLiteral("city");
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<MapFocus>(&result.value());
+        QVERIFY(msg != nullptr);
+        QCOMPARE(msg->lat, 35.6762);
+        QCOMPARE(msg->lon, 139.6503);
+        QCOMPARE(msg->label, QStringLiteral("Tokyo, Japan"));
+        QCOMPARE(msg->zoom, QStringLiteral("city"));
+    }
+
+    /// Verify MapClear deserializes.
+    void deserializeMapClear() {
+        QJsonObject obj;
+        obj["type"] = QStringLiteral("MapClear");
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<MapClear>(&result.value());
+        QVERIFY(msg != nullptr);
+    }
+
     /// Verify unknown type returns nullopt.
     void deserializeUnknownType() {
         QJsonObject obj;

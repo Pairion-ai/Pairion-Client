@@ -136,4 +136,41 @@ void ConnectionState::setBackgroundContext(const QString &context) {
     }
 }
 
+bool ConnectionState::mapFocusActive() const {
+    return m_mapFocusActive;
+}
+
+double ConnectionState::mapFocusLat() const {
+    return m_mapFocusLat;
+}
+
+double ConnectionState::mapFocusLon() const {
+    return m_mapFocusLon;
+}
+
+QString ConnectionState::mapFocusLabel() const {
+    return m_mapFocusLabel;
+}
+
+QString ConnectionState::mapFocusZoom() const {
+    return m_mapFocusZoom;
+}
+
+void ConnectionState::setMapFocus(double lat, double lon, const QString &label,
+                                   const QString &zoom) {
+    m_mapFocusLat = lat;
+    m_mapFocusLon = lon;
+    m_mapFocusLabel = label;
+    m_mapFocusZoom = zoom;
+    m_mapFocusActive = true;
+    emit mapFocusChanged();
+}
+
+void ConnectionState::clearMapFocus() {
+    if (m_mapFocusActive) {
+        m_mapFocusActive = false;
+        emit mapFocusChanged();
+    }
+}
+
 } // namespace pairion::state

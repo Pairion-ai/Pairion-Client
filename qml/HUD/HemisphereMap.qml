@@ -40,6 +40,15 @@ Item {
      */
     property real scrollSpeed: 0.2
 
+    /**
+     * @brief Server-driven map focus from a MapFocus WebSocket message.
+     * When non-null, the globe pans and zooms to this location; auto-scroll pauses.
+     * Set to null (MapClear) to zoom out and resume auto-scroll.
+     * Format: { lat: number, lon: number, zoom: string }
+     * Zoom string values: "continent" (1.2×), "country" (1.8×), "region" (2.8×), "city" (4.0×).
+     */
+    property var serverFocus: null
+
     // ── Day / night state ─────────────────────────────────────────────────────
 
     /**
@@ -69,12 +78,28 @@ Item {
         onTriggered: root.updateDayNight()
     }
 
+    /**
+     * @brief Maps a zoom level string from the server to a map scale factor.
+     * @param zoomLevel "continent", "country", "region", or "city"
+     * @return the corresponding scale multiplier
+     */
+    function zoomLevelToScale(zoomLevel) {
+        if (zoomLevel === "continent") return 1.2
+        if (zoomLevel === "country")   return 1.8
+        if (zoomLevel === "region")    return 2.8
+        return 4.0  // city (default)
+    }
+
     // ── Internal state ────────────────────────────────────────────────────────
 
-    readonly property real lonShift: 30.0
+    // Standard equirectangular projection: left edge = -180°, right edge = +180°.
+    // basePinX = (lon + 180) / 360 * width → lonShift must be 180.
+    readonly property real lonShift: 180.0
 
-    property real mapOffset: 0      // in (0, 2*width); initialised after layout
-    property real zoomScale: 1.0
+    property real mapOffset:        0      // in (0, 2*width); initialised after layout
+    property real zoomScale:        1.0
+    property real mapVerticalOffset: 0.0  // pixels: shifts container to centre pin latitude
+    property real targetFocusZoom:  1.6   // target zoom for next focusSequence run
 
     // No clip: the map spans full screen width so side-neighbour images sit
     // outside the window bounds and are invisible without clipping. Removing
@@ -110,9 +135,50 @@ Item {
             if (Math.abs(diff + root.width) < Math.abs(diff)) diff += root.width
 
             seqPan.to = root.mapOffset + diff
+
+            // Compute vertical offset to centre the pin's latitude.
+            // With mapContainer scaled 1.6× around Item.Center:
+            //   screen_y = mapVerticalOffset + height/2 + (pinY - height/2) * scale
+            // Solving for screen_y = height/2:
+            //   mapVerticalOffset = (height/2 - pinY) * targetScale
+            var pinY = (1.0 - (pin.lat + 90) / 180) * root.height
+            root.targetFocusZoom = 1.6
+            seqVertPan.to = (root.height / 2 - pinY) * root.targetFocusZoom
+
             focusSequence.start()
         } else {
             // Clear: zoom out and resume auto-scroll.
+            zoomOutAnim.start()
+        }
+    }
+
+    // ── Server-driven focus (MapFocus / MapClear) ─────────────────────────────
+
+    onServerFocusChanged: {
+        focusSequence.stop()
+        zoomOutAnim.stop()
+
+        if (serverFocus !== null) {
+            var sf       = serverFocus
+            var shifted  = sf.lon + lonShift
+            var normLon  = ((shifted % 360) + 360) % 360
+            var basePinX = (normLon / 360) * root.width
+            var target   = root.width / 2 + basePinX
+
+            // Shortest-path wrap
+            var diff = target - root.mapOffset
+            if (Math.abs(diff - root.width) < Math.abs(diff)) diff -= root.width
+            if (Math.abs(diff + root.width) < Math.abs(diff)) diff += root.width
+
+            seqPan.to = root.mapOffset + diff
+
+            var scale = zoomLevelToScale(sf.zoom)
+            root.targetFocusZoom = scale
+            var pinY = (1.0 - (sf.lat + 90) / 180) * root.height
+            seqVertPan.to = (root.height / 2 - pinY) * scale
+
+            focusSequence.start()
+        } else {
             zoomOutAnim.start()
         }
     }
@@ -122,24 +188,29 @@ Item {
     /**
      * @brief Three-phase focus sequence: zoom out → (pan + delayed zoom-in).
      *
-     * The pan and zoom-in run in parallel: the zoom-in starts 650 ms into the
-     * 1300 ms pan (halfway), so the map is still travelling when it begins to
-     * enlarge. This blends arrival and zoom into a single fluid motion rather
-     * than two distinct steps.
+     * Phase 1 pulls back to full globe and resets any previous vertical offset.
+     * Phase 2 pans horizontally and vertically in parallel with a delayed zoom-in,
+     * so arrival and zoom blend into a single fluid motion.
      */
     SequentialAnimation {
         id: focusSequence
 
-        // Phase 1 — pull back to show full globe context
-        NumberAnimation {
-            target: root; property: "zoomScale"
-            to: 1.0; duration: 450; easing.type: Easing.InOutQuad
+        // Phase 1 — pull back to full globe, reset vertical offset
+        ParallelAnimation {
+            NumberAnimation {
+                target: root; property: "zoomScale"
+                to: 1.0; duration: 450; easing.type: Easing.InOutQuad
+            }
+            NumberAnimation {
+                target: root; property: "mapVerticalOffset"
+                to: 0.0; duration: 450; easing.type: Easing.InOutQuad
+            }
         }
 
-        // Phase 2 — pan and zoom-in overlap
+        // Phase 2 — pan (horizontal + vertical) and zoom-in overlap
         ParallelAnimation {
 
-            // Pan to centre the pin (target set in onActivePinIndexChanged)
+            // Horizontal pan to centre the pin
             SequentialAnimation {
                 NumberAnimation {
                     id: seqPan
@@ -160,22 +231,35 @@ Item {
                 }
             }
 
+            // Vertical pan to centre the pin's latitude (target set in onActivePinIndexChanged)
+            NumberAnimation {
+                id: seqVertPan
+                target: root; property: "mapVerticalOffset"
+                duration: 1300; easing.type: Easing.InOutCubic
+            }
+
             // Zoom-in begins halfway through the pan (650 ms delay)
             SequentialAnimation {
                 PauseAnimation { duration: 650 }
                 NumberAnimation {
                     target: root; property: "zoomScale"
-                    to: 1.6; duration: 850; easing.type: Easing.OutCubic
+                    to: root.targetFocusZoom; duration: 850; easing.type: Easing.OutCubic
                 }
             }
         }
     }
 
-    /** @brief Zoom out and resume globe rotation when focus is cleared. */
-    NumberAnimation {
+    /** @brief Zoom out, reset vertical offset, and resume globe rotation. */
+    ParallelAnimation {
         id: zoomOutAnim
-        target: root; property: "zoomScale"
-        to: 1.0; duration: 600; easing.type: Easing.InOutQuad
+        NumberAnimation {
+            target: root; property: "zoomScale"
+            to: 1.0; duration: 600; easing.type: Easing.InOutQuad
+        }
+        NumberAnimation {
+            target: root; property: "mapVerticalOffset"
+            to: 0.0; duration: 600; easing.type: Easing.InOutQuad
+        }
     }
 
     // ── Auto-scroll engine ────────────────────────────────────────────────────
@@ -183,7 +267,8 @@ Item {
     Timer {
         interval: 16
         repeat:   true
-        running:  root.activePinIndex < 0 && root.width > 0 && !focusSequence.running
+        running:  root.activePinIndex < 0 && root.serverFocus === null
+                  && root.width > 0 && !focusSequence.running
 
         onTriggered: {
             var w = root.width
@@ -201,6 +286,7 @@ Item {
         id: mapContainer
         width:  root.width
         height: root.height
+        y:      root.mapVerticalOffset
         scale:  root.zoomScale
         transformOrigin: Item.Center   // expand toward all edges equally
 

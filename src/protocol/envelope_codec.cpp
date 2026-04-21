@@ -109,6 +109,15 @@ std::optional<InboundMessage> EnvelopeCodec::deserialize(const QJsonObject &obj)
         }
         return UnderBreathAck{ackType};
     }
+    if (type == QLatin1String("MapFocus")) {
+        return MapFocus{obj[QStringLiteral("lat")].toDouble(),
+                        obj[QStringLiteral("lon")].toDouble(),
+                        obj[QStringLiteral("label")].toString(),
+                        obj[QStringLiteral("zoom")].toString()};
+    }
+    if (type == QLatin1String("MapClear")) {
+        return MapClear{};
+    }
 
     return std::nullopt;
 }

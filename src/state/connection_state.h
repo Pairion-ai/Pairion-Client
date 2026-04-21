@@ -35,6 +35,11 @@ class ConnectionState : public QObject {
     Q_PROPERTY(QString agentState READ agentState NOTIFY agentStateChanged)
     Q_PROPERTY(QString voiceState READ voiceState NOTIFY voiceStateChanged)
     Q_PROPERTY(QString backgroundContext READ backgroundContext NOTIFY backgroundContextChanged)
+    Q_PROPERTY(bool mapFocusActive READ mapFocusActive NOTIFY mapFocusChanged)
+    Q_PROPERTY(double mapFocusLat READ mapFocusLat NOTIFY mapFocusChanged)
+    Q_PROPERTY(double mapFocusLon READ mapFocusLon NOTIFY mapFocusChanged)
+    Q_PROPERTY(QString mapFocusLabel READ mapFocusLabel NOTIFY mapFocusChanged)
+    Q_PROPERTY(QString mapFocusZoom READ mapFocusZoom NOTIFY mapFocusChanged)
 
   public:
     /**
@@ -98,6 +103,17 @@ class ConnectionState : public QObject {
      */
     QString backgroundContext() const;
 
+    /// @brief True when a MapFocus is active (server has focused the map on a location).
+    bool mapFocusActive() const;
+    /// @brief Latitude of the active map focus in decimal degrees.
+    double mapFocusLat() const;
+    /// @brief Longitude of the active map focus in decimal degrees.
+    double mapFocusLon() const;
+    /// @brief Human-readable label of the active map focus (e.g. "Tokyo, Japan").
+    QString mapFocusLabel() const;
+    /// @brief Zoom level of the active map focus: continent, country, region, or city.
+    QString mapFocusZoom() const;
+
   public slots:
     /**
      * @brief Update the connection status.
@@ -142,6 +158,16 @@ class ConnectionState : public QObject {
     void appendLlmToken(const QString &delta);
     /// @brief Clear the accumulated LLM response.
     void clearLlmResponse();
+    /**
+     * @brief Activate a server-driven map focus on a geographic location.
+     * @param lat latitude in decimal degrees
+     * @param lon longitude in decimal degrees
+     * @param label human-readable display label
+     * @param zoom zoom level string: continent, country, region, or city
+     */
+    void setMapFocus(double lat, double lon, const QString &label, const QString &zoom);
+    /// @brief Clear the active map focus and resume globe auto-scroll.
+    void clearMapFocus();
 
   signals:
     /// Emitted when connection status changes.
@@ -161,6 +187,8 @@ class ConnectionState : public QObject {
     void voiceStateChanged();
     /// Emitted when the background context changes.
     void backgroundContextChanged();
+    /// Emitted when the map focus state changes (set or cleared).
+    void mapFocusChanged();
 
   private:
     Status m_status = Disconnected;
@@ -174,6 +202,11 @@ class ConnectionState : public QObject {
     QString m_agentState;
     QString m_voiceState;
     QString m_backgroundContext = QStringLiteral("earth");
+    bool m_mapFocusActive = false;
+    double m_mapFocusLat = 0.0;
+    double m_mapFocusLon = 0.0;
+    QString m_mapFocusLabel;
+    QString m_mapFocusZoom;
 };
 
 } // namespace pairion::state
