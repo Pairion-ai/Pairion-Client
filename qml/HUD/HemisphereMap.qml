@@ -91,42 +91,54 @@ Item {
     // ── Animations ────────────────────────────────────────────────────────────
 
     /**
-     * @brief Three-phase focus sequence: zoom out → pan → zoom in.
-     * Gives a cinematic "pull back, travel, arrive" feel.
+     * @brief Three-phase focus sequence: zoom out → (pan + delayed zoom-in).
+     *
+     * The pan and zoom-in run in parallel: the zoom-in starts 650 ms into the
+     * 1300 ms pan (halfway), so the map is still travelling when it begins to
+     * enlarge. This blends arrival and zoom into a single fluid motion rather
+     * than two distinct steps.
      */
     SequentialAnimation {
         id: focusSequence
 
-        // Phase 1 — zoom out to show full globe context
+        // Phase 1 — pull back to show full globe context
         NumberAnimation {
             target: root; property: "zoomScale"
-            to: 1.0; duration: 500; easing.type: Easing.InOutQuad
+            to: 1.0; duration: 450; easing.type: Easing.InOutQuad
         }
 
-        // Phase 2 — pan to centre the pin (target set in onActivePinIndexChanged)
-        NumberAnimation {
-            id: seqPan
-            target: root; property: "mapOffset"
-            duration: 1400; easing.type: Easing.InOutCubic
-        }
+        // Phase 2 — pan and zoom-in overlap
+        ParallelAnimation {
 
-        // Re-normalise mapOffset into (0, 2*width) after the pan.
-        ScriptAction {
-            script: {
-                var w = root.width
-                if (w > 0) {
-                    var o = root.mapOffset
-                    while (o >= 2 * w) o -= w
-                    while (o <= 0)     o += w
-                    root.mapOffset = o
+            // Pan to centre the pin (target set in onActivePinIndexChanged)
+            SequentialAnimation {
+                NumberAnimation {
+                    id: seqPan
+                    target: root; property: "mapOffset"
+                    duration: 1300; easing.type: Easing.InOutCubic
+                }
+                // Re-normalise mapOffset into (0, 2*width) after the pan.
+                ScriptAction {
+                    script: {
+                        var w = root.width
+                        if (w > 0) {
+                            var o = root.mapOffset
+                            while (o >= 2 * w) o -= w
+                            while (o <= 0)     o += w
+                            root.mapOffset = o
+                        }
+                    }
                 }
             }
-        }
 
-        // Phase 3 — zoom in on the destination
-        NumberAnimation {
-            target: root; property: "zoomScale"
-            to: 1.6; duration: 700; easing.type: Easing.InOutQuad
+            // Zoom-in begins halfway through the pan (650 ms delay)
+            SequentialAnimation {
+                PauseAnimation { duration: 650 }
+                NumberAnimation {
+                    target: root; property: "zoomScale"
+                    to: 1.6; duration: 850; easing.type: Easing.OutCubic
+                }
+            }
         }
     }
 
