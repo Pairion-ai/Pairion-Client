@@ -17,18 +17,13 @@ ApplicationWindow {
     title: "Pairion"
     color: "#0a0e1a"
 
-    // true → show HUD, false → show DebugPanel
     property bool hudActive: true
-
-    // ── HUD ───────────────────────────────────────────────────────────────────
 
     PairionHUD {
         id: hud
         anchors.fill: parent
         visible: root.hudActive
     }
-
-    // ── Debug panel ───────────────────────────────────────────────────────────
 
     Rectangle {
         anchors.fill: parent
@@ -41,23 +36,30 @@ ApplicationWindow {
         }
     }
 
-    // ── Keyboard shortcuts ────────────────────────────────────────────────────
-
-    // F12 — toggle HUD ↔ Debug panel
     Shortcut {
-        sequence:  "F12"
+        sequence: "F12"
         onActivated: root.hudActive = !root.hudActive
     }
 
-    // F11 — toggle FPS counter (only meaningful when HUD is visible)
     Shortcut {
-        sequence:  "F11"
+        sequence: "F11"
         onActivated: if (root.hudActive) hud.toggleFps()
     }
 
-    // Escape — exit application
     Shortcut {
-        sequence:  "Escape"
+        sequence: "Escape"
         onActivated: Qt.quit()
     }
+
+    // ── News-pin focus shortcuts (test / demo) ────────────────────────────────
+    // Keys 1–5 pan + zoom to each news pin. Key 0 clears focus and resumes
+    // globe auto-scroll. These shortcuts will be replaced by ConnectionState
+    // bindings when Jarvis news narration is wired.
+
+    Shortcut { sequence: "0"; onActivated: if (root.hudActive) hud.focusPin(-1) }
+    Shortcut { sequence: "1"; onActivated: if (root.hudActive) hud.focusPin(0) }
+    Shortcut { sequence: "2"; onActivated: if (root.hudActive) hud.focusPin(1) }
+    Shortcut { sequence: "3"; onActivated: if (root.hudActive) hud.focusPin(2) }
+    Shortcut { sequence: "4"; onActivated: if (root.hudActive) hud.focusPin(3) }
+    Shortcut { sequence: "5"; onActivated: if (root.hudActive) hud.focusPin(4) }
 }

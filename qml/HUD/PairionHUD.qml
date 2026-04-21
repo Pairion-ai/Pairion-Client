@@ -1,89 +1,106 @@
 /**
  * @file PairionHUD.qml
- * @brief Full-screen cinematic HUD — rings, layout grid, hemisphere maps.
- *
- * Composites three layers:
- *   1. Dark navy background (#0a0e1a)
- *   2. RingSystem — five concentric animated arcs, centered, state-driven
- *   3. HudLayout — all dashboard panels (hemisphere maps, bottom panels,
- *                  transcript strip) positioned over the ring layer
- *
- * HUD state derivation (priority order):
- *   "error"     — ConnectionState.status == 0 (Disconnected)
- *   "listening" — voiceState is awaiting_wake / streaming / ending_speech
- *   "thinking"  — agentState == "thinking"
- *   "speaking"  — agentState == "speaking"
- *   "idle"      — all other conditions
+ * @brief Cinematic full-screen HUD: TopBar, world map, ring system, dashboard panels, transcript.
  */
-
 import QtQuick
 import Pairion
 
 Item {
     id: root
 
-    // ── HUD state derivation ─────────────────────────────────────────────────
+    /**
+     * @brief Toggles the FPS counter overlay.
+     */
+    function toggleFps() { fpsCounter.visible = !fpsCounter.visible }
 
     /**
-     * @brief Derived HUD state string passed to RingSystem and HudLayout.
-     * Priority: error > listening > thinking > speaking > idle.
+     * @brief Pan + zoom the world map to the pin at the given index.
+     * Pass -1 to zoom out and resume auto-scroll.
+     * Called by Main.qml test shortcuts today; wired to ConnectionState when
+     * Jarvis news narration is implemented.
      */
-    readonly property string hudState: {
-        if (ConnectionState.status === 0)
-            return "error"
-        const vs = ConnectionState.voiceState
-        if (vs === "awaiting_wake" || vs === "streaming" || vs === "ending_speech")
-            return "listening"
-        const as = ConnectionState.agentState
-        if (as === "thinking")
-            return "thinking"
-        if (as === "speaking")
-            return "speaking"
-        return "idle"
-    }
+    function focusPin(index) { worldMap.activePinIndex = index }
 
-    // ── Layer 1: Background ───────────────────────────────────────────────────
+    // ── Background ────────────────────────────────────────────────────────────
 
     Rectangle {
         anchors.fill: parent
-        color: "#0a0e1a"
+        color: "#070c18"
     }
 
-    // ── Layer 2: Ring system — centered ───────────────────────────────────────
+    // ── World map (full background) ───────────────────────────────────────────
+
+    HemisphereMap {
+        id: worldMap
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: topBar.bottom
+        anchors.bottom: dashboardPanels.top
+        anchors.bottomMargin: 4
+
+        pins: [
+            { lat: 32.7767, lon: -96.7970, city: "Dallas",    headline: "Market Volatility" },
+            { lat: 51.5074, lon:  -0.1278, city: "London",    headline: "Climate Summit" },
+            { lat: 35.6762, lon: 139.6503, city: "Tokyo",     headline: "Space Agency Update" },
+            { lat: 40.7128, lon: -74.0060, city: "New York",  headline: "Cyberattack Alert" },
+            { lat: -33.868, lon: 151.2093, city: "Sydney",    headline: "Renewable Energy" }
+        ]
+    }
+
+    // ── Ring system (centered over the Atlantic) ──────────────────────────────
 
     RingSystem {
         id: rings
-        anchors.centerIn: parent
-        width:  Math.min(parent.width, parent.height)
-        height: Math.min(parent.width, parent.height)
-        hudState: root.hudState
+        hudState: ConnectionState.hudState
+
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.horizontalCenterOffset: -(parent.width * 0.18)
+        anchors.top: topBar.bottom
+        anchors.bottom: dashboardPanels.top
+        width: parent.width * 0.7
     }
 
-    // ── Layer 3: Dashboard panel layout ───────────────────────────────────────
+    // ── Top bar ───────────────────────────────────────────────────────────────
 
-    HudLayout {
-        id: layout
-        anchors.fill: parent
-        hudState: root.hudState
+    TopBar {
+        id: topBar
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 48
     }
 
-    // ── FPS counter — top-right, hidden by default ────────────────────────────
+    // ── Dashboard panels ──────────────────────────────────────────────────────
+
+    DashboardPanels {
+        id: dashboardPanels
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: transcriptStrip.top
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        anchors.bottomMargin: 4
+        height: 180
+    }
+
+    // ── Transcript strip ──────────────────────────────────────────────────────
+
+    TranscriptStrip {
+        id: transcriptStrip
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 52
+    }
+
+    // ── FPS counter (hidden by default) ──────────────────────────────────────
 
     FpsCounter {
         id: fpsCounter
-        anchors {
-            top:     parent.top
-            right:   parent.right
-            margins: 16
-        }
-        shown: false
-    }
-
-    /**
-     * @brief Toggle the FPS counter visibility.
-     * Called by the F11 Shortcut in Main.qml.
-     */
-    function toggleFps() {
-        fpsCounter.shown = !fpsCounter.shown
+        visible: false
+        anchors.top: topBar.bottom
+        anchors.right: parent.right
+        anchors.topMargin: 8
+        anchors.rightMargin: 12
     }
 }

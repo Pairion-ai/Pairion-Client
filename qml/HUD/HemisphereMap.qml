@@ -1,19 +1,20 @@
 /**
  * @file HemisphereMap.qml
- * @brief Dot-matrix hemisphere map with glowing amber news pins.
+ * @brief Full world map using NASA Black Marble image with seamless bidirectional wrapping,
+ *        pin focus panning, and zoom.
  *
- * Renders one hemisphere (western or eastern) as a grid of 2px dots on an
- * equirectangular projection. Land cells are painted cyan at low opacity;
- * ocean cells are transparent. News pins appear as pulsing amber dots with a
- * soft glow halo at their projected lat/lon positions.
+ * Three copies of the equirectangular map are laid out side-by-side inside a clipped
+ * container. A Timer shifts mapOffset each frame for continuous globe rotation.
  *
- * Projection: equirectangular — lon maps linearly to x, lat maps linearly to y.
- * Grid resolution: 2° per cell (180 cols × 90 rows for a full sphere).
- * Each hemisphere uses 90 columns (0°–180° for western = lon -180 to 0,
- * eastern = lon 0 to 180).
+ * When activePinIndex is set to a valid pin index the auto-scroll pauses, the map
+ * animates horizontally so that pin lands at screen centre, and the map zooms in.
+ * Setting activePinIndex back to -1 zooms out and resumes auto-scroll.
  *
- * Land mask: compact RLE string decoded at Component.onCompleted into a flat
- * boolean array. One character per 2°×2° cell: '1' = land, '0' = ocean.
+ * Shortest-path wrapping: the pan animation always takes the shorter arc around the
+ * globe (left or right) so the map never spins more than half a revolution to reach
+ * any pin.
+ *
+ * The image uses a 30°W longitude shift so the Atlantic Ocean sits at x=50%.
  */
 
 import QtQuick
@@ -23,298 +24,256 @@ Item {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /**
-     * @brief Which hemisphere to show: "western" (-180..0) or "eastern" (0..180).
-     */
-    property string hemisphere: "western"
-
-    /**
-     * @brief News pin data. Each entry: { lat, lon, city, headline }.
-     * Only pins whose longitude falls inside this hemisphere are rendered.
-     */
+    /** @brief News pin list. Each element: { lat, lon, city, headline } */
     property var pins: []
 
-    // ── Internal geometry constants ───────────────────────────────────────────
-
-    // Full grid is 180 cols (2°/col) × 90 rows (2°/row)
-    readonly property int gridCols: 90    // per hemisphere
-    readonly property int gridRows: 90
-    readonly property real dotDiam:    2
-    readonly property real dotSpacing: 4.5   // center-to-center
-
-    // Computed map canvas size (may be smaller than item if aspect differs)
-    readonly property real mapW: gridCols * dotSpacing
-    readonly property real mapH: gridRows * dotSpacing
-    readonly property real offsetX: (width  - mapW) * 0.5
-    readonly property real offsetY: (height - mapH) * 0.5
-
-    // ── Land mask (2°×2° equirectangular, row-major lat 90→-90, full 360°) ──
-    //
-    // Encoded as a flat string of '0'/'1' characters, 180 cols × 90 rows = 16200 chars.
-    // Row 0 = lat 90–88°N, row 89 = lat 88°S–90°S.
-    // Col 0 = lon 180°W–178°W, col 179 = lon 178°E–180°E.
-    //
-    // This simplified mask is approximate — it captures major continental shapes
-    // at sci-fi HUD fidelity, not cartographic accuracy.
-
-    readonly property string landMaskRaw: (function() {
-        // Helper: repeat a char n times
-        function r(c, n) { var s = ""; for (var i = 0; i < n; i++) s += c; return s; }
-        var O = "0", L = "1";
-        var rows = [
-            // row 0-4: Arctic (lat 90→80°N) — mostly ocean with Greenland/land
-            r(O,55)+r(L,5)+r(O,10)+r(L,6)+r(O,10)+r(L,5)+r(O,89),   // 0
-            r(O,50)+r(L,8)+r(O,8)+r(L,8)+r(O,8)+r(L,6)+r(O,92),     // 1
-            r(O,48)+r(L,10)+r(O,6)+r(L,10)+r(O,6)+r(L,8)+r(O,92),   // 2
-            r(O,46)+r(L,12)+r(O,5)+r(L,11)+r(O,5)+r(L,9)+r(O,92),   // 3
-            r(O,44)+r(L,13)+r(O,4)+r(L,12)+r(O,4)+r(L,10)+r(O,93),  // 4
-            // row 5-14: lat 80→60°N — Canada, Alaska, Russia, Scandinavia
-            r(O,40)+r(L,15)+r(O,3)+r(L,13)+r(O,3)+r(L,14)+r(O,92),  // 5
-            r(O,38)+r(L,17)+r(O,2)+r(L,14)+r(O,2)+r(L,15)+r(O,92),  // 6
-            r(O,36)+r(L,19)+r(O,1)+r(L,15)+r(O,2)+r(L,16)+r(O,91),  // 7
-            r(O,34)+r(L,20)+r(O,1)+r(L,16)+r(O,1)+r(L,17)+r(O,91),  // 8
-            r(O,32)+r(L,22)+r(L,17)+r(L,18)+r(O,91),                 // 9
-            r(O,30)+r(L,24)+r(L,18)+r(L,20)+r(O,88),                 // 10
-            r(O,28)+r(L,25)+r(L,19)+r(L,21)+r(O,87),                 // 11
-            r(O,26)+r(L,27)+r(L,20)+r(L,22)+r(O,85),                 // 12
-            r(O,25)+r(L,28)+r(L,21)+r(L,23)+r(O,83),                 // 13
-            r(O,24)+r(L,29)+r(L,22)+r(L,24)+r(O,81),                 // 14
-            // row 15-24: lat 60→40°N — USA, Europe, China
-            r(O,22)+r(L,30)+r(O,3)+r(L,20)+r(O,2)+r(L,25)+r(O,78),  // 15
-            r(O,20)+r(L,31)+r(O,4)+r(L,19)+r(O,3)+r(L,26)+r(O,77),  // 16
-            r(O,18)+r(L,32)+r(O,5)+r(L,18)+r(O,4)+r(L,27)+r(O,76),  // 17
-            r(O,16)+r(L,33)+r(O,6)+r(L,17)+r(O,5)+r(L,28)+r(O,75),  // 18
-            r(O,15)+r(L,33)+r(O,7)+r(L,16)+r(O,5)+r(L,29)+r(O,75),  // 19
-            r(O,14)+r(L,34)+r(O,8)+r(L,15)+r(O,6)+r(L,28)+r(O,75),  // 20
-            r(O,13)+r(L,34)+r(O,9)+r(L,14)+r(O,6)+r(L,28)+r(O,76),  // 21
-            r(O,12)+r(L,35)+r(O,9)+r(L,14)+r(O,6)+r(L,27)+r(O,77),  // 22
-            r(O,11)+r(L,35)+r(O,10)+r(L,13)+r(O,6)+r(L,27)+r(O,78), // 23
-            r(O,10)+r(L,35)+r(O,11)+r(L,12)+r(O,7)+r(L,26)+r(O,79), // 24
-            // row 25-34: lat 40→20°N — Mexico, N Africa, Middle East, S Asia
-            r(O,10)+r(L,33)+r(O,12)+r(L,11)+r(O,8)+r(L,28)+r(O,78), // 25
-            r(O,11)+r(L,30)+r(O,14)+r(L,10)+r(O,9)+r(L,28)+r(O,78), // 26
-            r(O,12)+r(L,27)+r(O,15)+r(L,10)+r(O,9)+r(L,27)+r(O,80), // 27
-            r(O,13)+r(L,24)+r(O,16)+r(L,10)+r(O,9)+r(L,26)+r(O,82), // 28
-            r(O,14)+r(L,21)+r(O,17)+r(L,10)+r(O,9)+r(L,25)+r(O,84), // 29
-            r(O,15)+r(L,18)+r(O,18)+r(L,11)+r(O,9)+r(L,24)+r(O,85), // 30
-            r(O,16)+r(L,15)+r(O,19)+r(L,11)+r(O,9)+r(L,22)+r(O,88), // 31
-            r(O,17)+r(L,12)+r(O,20)+r(L,10)+r(O,10)+r(L,20)+r(O,91),// 32
-            r(O,18)+r(L,10)+r(O,21)+r(L,10)+r(O,10)+r(L,18)+r(O,93),// 33
-            r(O,19)+r(L,8)+r(O,22)+r(L,10)+r(O,11)+r(L,16)+r(O,94), // 34
-            // row 35-44: lat 20→0° — C America, C Africa, SE Asia
-            r(O,20)+r(L,6)+r(O,23)+r(L,11)+r(O,11)+r(L,14)+r(O,95), // 35
-            r(O,21)+r(L,5)+r(O,24)+r(L,12)+r(O,11)+r(L,12)+r(O,95), // 36
-            r(O,22)+r(L,4)+r(O,25)+r(L,13)+r(O,11)+r(L,10)+r(O,95), // 37
-            r(O,23)+r(L,3)+r(O,26)+r(L,14)+r(O,10)+r(L,9)+r(O,95),  // 38
-            r(O,24)+r(L,3)+r(O,27)+r(L,15)+r(O,10)+r(L,8)+r(O,93),  // 39
-            r(O,25)+r(L,3)+r(O,27)+r(L,15)+r(O,10)+r(L,9)+r(O,91),  // 40
-            r(O,26)+r(L,3)+r(O,26)+r(L,15)+r(O,10)+r(L,10)+r(O,90), // 41
-            r(O,27)+r(L,4)+r(O,25)+r(L,14)+r(O,10)+r(L,11)+r(O,89), // 42
-            r(O,28)+r(L,5)+r(O,24)+r(L,13)+r(O,11)+r(L,10)+r(O,89), // 43
-            r(O,29)+r(L,6)+r(O,23)+r(L,12)+r(O,12)+r(L,8)+r(O,90),  // 44
-            // row 45-54: lat 0→20°S — S America, S Africa, Oceania
-            r(O,30)+r(L,7)+r(O,22)+r(L,11)+r(O,12)+r(L,7)+r(O,91),  // 45
-            r(O,31)+r(L,8)+r(O,21)+r(L,10)+r(O,12)+r(L,6)+r(O,92),  // 46
-            r(O,32)+r(L,8)+r(O,21)+r(L,9)+r(O,11)+r(L,5)+r(O,94),   // 47
-            r(O,33)+r(L,8)+r(O,22)+r(L,8)+r(O,10)+r(L,4)+r(O,95),   // 48
-            r(O,34)+r(L,8)+r(O,22)+r(L,8)+r(O,9)+r(L,3)+r(O,96),    // 49
-            r(O,35)+r(L,7)+r(O,23)+r(L,7)+r(O,8)+r(L,3)+r(O,97),    // 50
-            r(O,36)+r(L,7)+r(O,23)+r(L,6)+r(O,8)+r(L,3)+r(O,97),    // 51
-            r(O,37)+r(L,7)+r(O,23)+r(L,5)+r(O,9)+r(L,4)+r(O,95),    // 52
-            r(O,38)+r(L,7)+r(O,22)+r(L,4)+r(O,10)+r(L,5)+r(O,94),   // 53
-            r(O,39)+r(L,6)+r(O,22)+r(L,3)+r(O,11)+r(L,6)+r(O,93),   // 54
-            // row 55-64: lat 20→40°S — S South America, S Africa, Australia
-            r(O,40)+r(L,5)+r(O,23)+r(L,2)+r(O,12)+r(L,7)+r(O,91),   // 55
-            r(O,41)+r(L,5)+r(O,58)+r(L,8)+r(O,88),                   // 56
-            r(O,42)+r(L,4)+r(O,58)+r(L,8)+r(O,88),                   // 57
-            r(O,43)+r(L,4)+r(O,57)+r(L,8)+r(O,88),                   // 58
-            r(O,44)+r(L,4)+r(O,56)+r(L,8)+r(O,88),                   // 59
-            r(O,45)+r(L,3)+r(O,55)+r(L,7)+r(O,90),                   // 60
-            r(O,46)+r(L,3)+r(O,54)+r(L,6)+r(O,91),                   // 61
-            r(O,47)+r(L,3)+r(O,53)+r(L,5)+r(O,92),                   // 62
-            r(O,48)+r(L,2)+r(O,53)+r(L,4)+r(O,93),                   // 63
-            r(O,49)+r(L,2)+r(O,52)+r(L,3)+r(O,94),                   // 64
-            // row 65-74: lat 40→60°S — tip of S America, Antarctica approaches
-            r(O,50)+r(L,2)+r(O,51)+r(L,2)+r(O,95),                   // 65
-            r(O,51)+r(L,1)+r(O,128),                                   // 66
-            r(O,52)+r(L,1)+r(O,127),                                   // 67
-            r(O,180),                                                   // 68
-            r(O,180),                                                   // 69
-            r(O,180),                                                   // 70
-            r(O,180),                                                   // 71
-            r(O,180),                                                   // 72
-            r(O,180),                                                   // 73
-            r(O,180),                                                   // 74
-            // row 75-89: lat 60→90°S — Antarctica
-            r(O,35)+r(L,110)+r(O,35),                                  // 75
-            r(O,25)+r(L,130)+r(O,25),                                  // 76
-            r(O,18)+r(L,144)+r(O,18),                                  // 77
-            r(O,12)+r(L,156)+r(O,12),                                  // 78
-            r(O,8)+r(L,164)+r(O,8),                                    // 79
-            r(O,5)+r(L,170)+r(O,5),                                    // 80
-            r(O,3)+r(L,174)+r(O,3),                                    // 81
-            r(O,2)+r(L,176)+r(O,2),                                    // 82
-            r(O,1)+r(L,178)+r(O,1),                                    // 83
-            r(L,180),                                                   // 84
-            r(L,180),                                                   // 85
-            r(L,180),                                                   // 86
-            r(L,180),                                                   // 87
-            r(L,180),                                                   // 88
-            r(L,180)                                                    // 89
-        ];
-        return rows.join("");
-    })()
-
-    // Decoded land mask — flat array [row*180+col] = true/false
-    property var landMask: []
-
-    // ── News pin definitions ──────────────────────────────────────────────────
+    /**
+     * @brief Index into pins[] that Jarvis is currently narrating. -1 = none.
+     * Set this from the outside (ConnectionState binding or test shortcut) to
+     * trigger pan + zoom. Reset to -1 to zoom out and resume auto-scroll.
+     */
+    property int activePinIndex: -1
 
     /**
-     * @brief All known news pins (both hemispheres). Filtered by hemisphere at render time.
+     * @brief Auto-scroll speed in pixels per frame.
+     * Positive = scroll left (eastward). Negative = scroll right (westward).
      */
-    readonly property var allPins: [
-        // Western hemisphere (lon < 0)
-        { lat:  40.7, lon:  -74.0, city: "New York",       headline: "Markets rally on Fed pause" },
-        { lat:  34.0, lon: -118.2, city: "Los Angeles",    headline: "Tech layoffs continue" },
-        { lat:  19.4, lon:  -99.1, city: "Mexico City",    headline: "Trade talks resume" },
-        { lat: -23.5, lon:  -46.6, city: "São Paulo",      headline: "Amazon deforestation rate drops" },
-        { lat: -34.6, lon:  -58.4, city: "Buenos Aires",   headline: "Argentina debt deal reached" },
-        // Eastern hemisphere (lon >= 0)
-        { lat:  51.5, lon:   -0.1, city: "London",         headline: "Bank of England holds rates" },
-        { lat:  48.9, lon:    2.3, city: "Paris",          headline: "EU energy summit opens" },
-        { lat:  55.8, lon:   37.6, city: "Moscow",         headline: "Arctic shipping route expands" },
-        { lat:  35.7, lon:  139.7, city: "Tokyo",          headline: "Nikkei hits record high" },
-        { lat: -33.9, lon:  151.2, city: "Sydney",         headline: "Australia GDP beats forecast" }
-    ]
+    property real scrollSpeed: 0.4
 
-    // ── Land mask decode ──────────────────────────────────────────────────────
+    // ── Internal state ────────────────────────────────────────────────────────
 
-    Component.onCompleted: {
-        var mask = []
-        var raw  = landMaskRaw
-        // Pad or truncate to exactly 180×90 = 16200 chars
-        var expected = 180 * 90
-        for (var i = 0; i < expected; i++) {
-            mask.push(i < raw.length ? raw[i] === "1" : false)
-        }
-        landMask = mask
-        landCanvas.requestPaint()
+    readonly property real lonShift: 30.0
+
+    property real mapOffset: 0      // in (0, 2*width); initialised after layout
+    property real zoomScale: 1.0
+
+    // No clip: the map spans full screen width so side-neighbour images sit
+    // outside the window bounds and are invisible without clipping. Removing
+    // clip allows mapContainer's scale transform to expand visibly when a pin
+    // is focused (clip would have cancelled the zoom back to original bounds).
+
+    // Initialise once we know our width.
+    onWidthChanged: {
+        if (mapOffset === 0 && root.width > 0)
+            mapOffset = root.width
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Pin focus logic ───────────────────────────────────────────────────────
 
-    /**
-     * @brief Convert lat/lon to pixel position on this hemisphere's canvas.
-     * Returns {x, y} relative to the map canvas origin (top-left of dot grid).
-     * Returns null if the pin is outside this hemisphere.
-     */
-    function latLonToXY(lat, lon) {
-        var isWest = (hemisphere === "western")
-        // Western: lon -180..0  →  col 0..89
-        // Eastern: lon 0..180   →  col 0..89
-        var lonMin = isWest ? -180 : 0
-        var lonMax = isWest ?    0 : 180
-        if (lon < lonMin || lon > lonMax) return null
+    onActivePinIndexChanged: {
+        focusSequence.stop()
+        zoomOutAnim.stop()
 
-        var col = (lon - lonMin) / (lonMax - lonMin) * (gridCols - 1)
-        var row = (90 - lat) / 180 * (gridRows - 1)
-        return {
-            x: offsetX + col * dotSpacing + dotSpacing * 0.5,
-            y: offsetY + row * dotSpacing + dotSpacing * 0.5
+        if (activePinIndex >= 0 && activePinIndex < pins.length) {
+            // Compute target mapOffset that places this pin at screen centre.
+            //   centre-image left edge = (width - mapOffset)
+            //   pin screen x = (width - mapOffset) + basePinX = width / 2
+            //   → mapOffset = width/2 + basePinX
+            var pin      = pins[activePinIndex]
+            var shifted  = pin.lon + lonShift
+            var normLon  = ((shifted % 360) + 360) % 360
+            var basePinX = (normLon / 360) * root.width
+            var target   = root.width / 2 + basePinX
+
+            // Shortest-path wrap (never spin more than half a revolution).
+            var diff = target - root.mapOffset
+            if (Math.abs(diff - root.width) < Math.abs(diff)) diff -= root.width
+            if (Math.abs(diff + root.width) < Math.abs(diff)) diff += root.width
+
+            seqPan.to = root.mapOffset + diff
+            focusSequence.start()
+        } else {
+            // Clear: zoom out and resume auto-scroll.
+            zoomOutAnim.start()
         }
     }
 
+    // ── Animations ────────────────────────────────────────────────────────────
+
     /**
-     * @brief Check whether a grid cell is land for this hemisphere.
-     * col is the LOCAL hemisphere column (0–89), row is global (0–89).
+     * @brief Three-phase focus sequence: zoom out → pan → zoom in.
+     * Gives a cinematic "pull back, travel, arrive" feel.
      */
-    function isLand(localCol, row) {
-        if (landMask.length === 0) return false
-        // Map local col → global col
-        // Western: local 0 = global col 0 (lon -180), local 89 = global col 89 (lon 0)
-        // Eastern: local 0 = global col 90 (lon 0),   local 89 = global col 179 (lon 180)
-        var globalCol = (hemisphere === "western") ? localCol : (localCol + 90)
-        var idx = row * 180 + globalCol
-        return (idx >= 0 && idx < landMask.length) ? landMask[idx] : false
-    }
+    SequentialAnimation {
+        id: focusSequence
 
-    // ── Dot canvas ────────────────────────────────────────────────────────────
+        // Phase 1 — zoom out to show full globe context
+        NumberAnimation {
+            target: root; property: "zoomScale"
+            to: 1.0; duration: 500; easing.type: Easing.InOutQuad
+        }
 
-    Canvas {
-        id: landCanvas
-        anchors.fill: parent
+        // Phase 2 — pan to centre the pin (target set in onActivePinIndexChanged)
+        NumberAnimation {
+            id: seqPan
+            target: root; property: "mapOffset"
+            duration: 1400; easing.type: Easing.InOutCubic
+        }
 
-        onPaint: {
-            if (root.landMask.length === 0) return
-            var ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-
-            ctx.fillStyle = "rgba(0, 180, 255, 0.30)"
-
-            for (var row = 0; row < root.gridRows; row++) {
-                for (var col = 0; col < root.gridCols; col++) {
-                    if (!root.isLand(col, row)) continue
-                    var cx = root.offsetX + col * root.dotSpacing + root.dotSpacing * 0.5
-                    var cy = root.offsetY + row * root.dotSpacing + root.dotSpacing * 0.5
-                    ctx.beginPath()
-                    ctx.arc(cx, cy, root.dotDiam * 0.5, 0, Math.PI * 2)
-                    ctx.fill()
+        // Re-normalise mapOffset into (0, 2*width) after the pan.
+        ScriptAction {
+            script: {
+                var w = root.width
+                if (w > 0) {
+                    var o = root.mapOffset
+                    while (o >= 2 * w) o -= w
+                    while (o <= 0)     o += w
+                    root.mapOffset = o
                 }
             }
         }
+
+        // Phase 3 — zoom in on the destination
+        NumberAnimation {
+            target: root; property: "zoomScale"
+            to: 1.6; duration: 700; easing.type: Easing.InOutQuad
+        }
     }
 
-    // ── News pins ─────────────────────────────────────────────────────────────
+    /** @brief Zoom out and resume globe rotation when focus is cleared. */
+    NumberAnimation {
+        id: zoomOutAnim
+        target: root; property: "zoomScale"
+        to: 1.0; duration: 600; easing.type: Easing.InOutQuad
+    }
 
-    Repeater {
-        model: root.allPins.length
+    // ── Auto-scroll engine ────────────────────────────────────────────────────
 
-        delegate: Item {
-            id: pinDelegate
+    Timer {
+        interval: 16
+        repeat:   true
+        running:  root.activePinIndex < 0 && root.width > 0 && !focusSequence.running
 
-            required property int index
+        onTriggered: {
+            var w = root.width
+            if (w <= 0) return
+            var next = root.mapOffset + root.scrollSpeed
+            if (next >= 2 * w) next -= w
+            if (next <= 0)     next += w
+            root.mapOffset = next
+        }
+    }
 
-            readonly property var pinData: root.allPins[index]
-            readonly property var pos: root.latLonToXY(pinData.lat, pinData.lon)
-            readonly property bool visible2: pos !== null
+    // ── Map container — zoom is applied here ──────────────────────────────────
 
-            visible: visible2
-            x: visible2 ? pos.x - 8 : 0
-            y: visible2 ? pos.y - 8 : 0
-            width:  16
-            height: 16
+    Item {
+        id: mapContainer
+        width:  root.width
+        height: root.height
+        scale:  root.zoomScale
+        transformOrigin: Item.Center   // expand toward all edges equally
 
-            // Glow halo — wider faded circle behind
-            Rectangle {
-                anchors.centerIn: parent
-                width:  14
-                height: 14
-                radius: 7
-                color:  "transparent"
-                border.color: "#ff8800"
-                border.width: 2
-                opacity: 0.30
-            }
+        // Left neighbour — visible when scrolling right / zooming into western pins
+        Image {
+            x: -root.mapOffset
+            width: root.width; height: root.height
+            source: "qrc:/resources/maps/world_map.png"
+            fillMode: Image.Stretch; smooth: true; antialiasing: true
+        }
 
-            // Pin dot
-            Rectangle {
-                id: pinDot
-                anchors.centerIn: parent
-                width:  6
-                height: 6
-                radius: 3
-                color:  "#ff8800"
+        // Centre copy — fills the screen at mapOffset == width
+        Image {
+            x: root.width - root.mapOffset
+            width: root.width; height: root.height
+            source: "qrc:/resources/maps/world_map.png"
+            fillMode: Image.Stretch; smooth: true; antialiasing: true
+        }
 
-                // Pulse: opacity 0.70 → 1.0 → 0.70, 2 s cycle, staggered
-                SequentialAnimation on opacity {
+        // Right neighbour — visible when scrolling left / zooming into eastern pins
+        Image {
+            x: 2 * root.width - root.mapOffset
+            width: root.width; height: root.height
+            source: "qrc:/resources/maps/world_map.png"
+            fillMode: Image.Stretch; smooth: true; antialiasing: true
+        }
+
+        // ── News pins (inside container so they scale with the zoom) ──────────
+
+        Repeater {
+            model: root.pins
+
+            delegate: Item {
+                id: pinItem
+                required property var modelData
+                required property int index
+
+                readonly property bool isActive: index === root.activePinIndex
+
+                readonly property real shiftedLon:   modelData.lon + root.lonShift
+                readonly property real normalizedLon: ((shiftedLon % 360) + 360) % 360
+                readonly property real basePinX:      (normalizedLon / 360) * root.width
+
+                // Horizontal position tracks the scroll offset with wrapping.
+                readonly property real pinX: ((root.width + basePinX - root.mapOffset) % root.width + root.width) % root.width
+                readonly property real pinY: (1.0 - (modelData.lat + 90) / 180) * root.height
+
+                x: pinX - 7
+                y: pinY - 7
+                width: 14; height: 14
+
+                // Pulse animation — active pin beats faster
+                property real pulseOpacity: 0.8
+                SequentialAnimation on pulseOpacity {
                     loops: Animation.Infinite
-                    // Stagger each pin by index * 200 ms
-                    PauseAnimation   { duration: (pinDelegate.index * 200) % 2000 }
-                    NumberAnimation  { from: 0.70; to: 1.00; duration: 1000; easing.type: Easing.InOutSine }
-                    NumberAnimation  { from: 1.00; to: 0.70; duration: 1000; easing.type: Easing.InOutSine }
+                    running: true
+                    NumberAnimation {
+                        to: 0.4
+                        duration: pinItem.isActive ? 400 : 1000 + pinItem.index * 180
+                        easing.type: Easing.InOutSine
+                    }
+                    NumberAnimation {
+                        to: 1.0
+                        duration: pinItem.isActive ? 400 : 1000 + pinItem.index * 180
+                        easing.type: Easing.InOutSine
+                    }
+                }
+
+                // Outer glow ring — expands and turns white when active
+                Rectangle {
+                    anchors.centerIn: parent
+                    width:   pinItem.isActive ? 24 : 14
+                    height:  pinItem.isActive ? 24 : 14
+                    radius:  width / 2
+                    color:   pinItem.isActive ? "#00b4ff" : "#ff8800"
+                    opacity: pinItem.pulseOpacity * (pinItem.isActive ? 0.45 : 0.30)
+                    Behavior on width  { NumberAnimation { duration: 500; easing.type: Easing.OutQuad } }
+                    Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutQuad } }
+                    Behavior on color  { ColorAnimation  { duration: 400 } }
+                }
+
+                // Pin dot — turns cyan when active
+                Rectangle {
+                    anchors.centerIn: parent
+                    width:  pinItem.isActive ? 9 : 6
+                    height: pinItem.isActive ? 9 : 6
+                    radius: width / 2
+                    color:  pinItem.isActive ? "#00b4ff" : "#ff8800"
+                    opacity: pinItem.pulseOpacity
+                    Behavior on width  { NumberAnimation { duration: 500; easing.type: Easing.OutQuad } }
+                    Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutQuad } }
+                    Behavior on color  { ColorAnimation  { duration: 400 } }
                 }
             }
+        }
+    }
+
+    // ── Edge fades — outside the zoom container so they don't scale ───────────
+
+    Rectangle {
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: parent.height * 0.10
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#ff070c18" }
+            GradientStop { position: 1.0; color: "transparent" }
+        }
+    }
+
+    Rectangle {
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: parent.height * 0.10
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "transparent" }
+            GradientStop { position: 1.0; color: "#ff070c18" }
         }
     }
 }
