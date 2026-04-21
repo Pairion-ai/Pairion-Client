@@ -172,20 +172,20 @@ Item {
                 width: parent.width
                 height: parent.height
                 anchors.centerIn: parent
-                opacity: ringItem.effectiveOpacity * 0.4
+                opacity: ringItem.effectiveOpacity * 0.55
                 rotation: ringItem.rotationAngle
 
                 layer.enabled: true
                 layer.effect: MultiEffect {
                     blurEnabled: true
-                    blur: 0.5
-                    blurMax: 24
+                    blur: 1.0
+                    blurMax: 32
                 }
 
                 ShapePath {
                     strokeColor: root.ringColor
                     fillColor:   "transparent"
-                    strokeWidth: cfg.strokeWidth * 5
+                    strokeWidth: cfg.strokeWidth * 7
                     capStyle: ShapePath.RoundCap
 
                     PathAngleArc {

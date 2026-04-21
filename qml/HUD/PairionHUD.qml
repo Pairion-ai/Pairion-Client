@@ -1,17 +1,19 @@
 /**
  * @file PairionHUD.qml
- * @brief Full-screen cinematic HUD with state-driven concentric ring system.
+ * @brief Full-screen cinematic HUD — rings, layout grid, hemisphere maps.
  *
- * PairionHUD is the primary UI surface for the Pairion Client. It occupies the
- * entire application window, renders five concentric animated rings via
- * RingSystem, and exposes an FPS counter (F11) for performance monitoring.
+ * Composites three layers:
+ *   1. Dark navy background (#0a0e1a)
+ *   2. RingSystem — five concentric animated arcs, centered, state-driven
+ *   3. HudLayout — all dashboard panels (hemisphere maps, bottom panels,
+ *                  transcript strip) positioned over the ring layer
  *
- * State derivation:
- *   - "error"     — ConnectionState.status == 0 (Disconnected)
- *   - "listening" — ConnectionState.voiceState is "awaiting_wake" or "streaming"
- *   - "thinking"  — ConnectionState.agentState == "thinking"
- *   - "speaking"  — ConnectionState.agentState == "speaking"
- *   - "idle"      — all other conditions
+ * HUD state derivation (priority order):
+ *   "error"     — ConnectionState.status == 0 (Disconnected)
+ *   "listening" — voiceState is awaiting_wake / streaming / ending_speech
+ *   "thinking"  — agentState == "thinking"
+ *   "speaking"  — agentState == "speaking"
+ *   "idle"      — all other conditions
  */
 
 import QtQuick
@@ -23,8 +25,7 @@ Item {
     // ── HUD state derivation ─────────────────────────────────────────────────
 
     /**
-     * @brief Derived HUD state string passed to RingSystem.
-     *
+     * @brief Derived HUD state string passed to RingSystem and HudLayout.
      * Priority: error > listening > thinking > speaking > idle.
      */
     readonly property string hudState: {
@@ -41,52 +42,29 @@ Item {
         return "idle"
     }
 
-    // ── Dark navy background ─────────────────────────────────────────────────
+    // ── Layer 1: Background ───────────────────────────────────────────────────
 
     Rectangle {
         anchors.fill: parent
         color: "#0a0e1a"
     }
 
-    // ── Ring system — centered in viewport ───────────────────────────────────
+    // ── Layer 2: Ring system — centered ───────────────────────────────────────
 
     RingSystem {
         id: rings
         anchors.centerIn: parent
-        // Use the full shorter dimension so rings are always circular
         width:  Math.min(parent.width, parent.height)
         height: Math.min(parent.width, parent.height)
         hudState: root.hudState
     }
 
-    // ── Status label — subtle text below rings ────────────────────────────────
+    // ── Layer 3: Dashboard panel layout ───────────────────────────────────────
 
-    Text {
-        id: statusLabel
-        anchors {
-            horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-            bottomMargin: 60
-        }
-        text: {
-            switch (root.hudState) {
-                case "error":     return "DISCONNECTED"
-                case "listening": return "LISTENING"
-                case "thinking":  return "THINKING"
-                case "speaking":  return "SPEAKING"
-                default:          return ""
-            }
-        }
-        color:          "#00b4ff"
-        opacity:        root.hudState === "idle" ? 0.0 : 0.55
-        font.pixelSize: 13
-        font.letterSpacing: 4
-        font.family:    "Courier New"
-        font.capitalization: Font.AllUppercase
-
-        Behavior on opacity {
-            NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
-        }
+    HudLayout {
+        id: layout
+        anchors.fill: parent
+        hudState: root.hudState
     }
 
     // ── FPS counter — top-right, hidden by default ────────────────────────────
@@ -94,16 +72,16 @@ Item {
     FpsCounter {
         id: fpsCounter
         anchors {
-            top:    parent.top
-            right:  parent.right
+            top:     parent.top
+            right:   parent.right
             margins: 16
         }
-        shown: false   // toggled by F11 in Main.qml key handler
+        shown: false
     }
 
     /**
      * @brief Toggle the FPS counter visibility.
-     * Called by the F11 KeyboardShortcut in Main.qml.
+     * Called by the F11 Shortcut in Main.qml.
      */
     function toggleFps() {
         fpsCounter.shown = !fpsCounter.shown

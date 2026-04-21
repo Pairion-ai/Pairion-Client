@@ -5,6 +5,9 @@
         <file>qml/HUD/PairionHUD.qml</file>
         <file>qml/HUD/RingSystem.qml</file>
         <file>qml/HUD/FpsCounter.qml</file>
+        <file>qml/HUD/DashboardPanel.qml</file>
+        <file>qml/HUD/HemisphereMap.qml</file>
+        <file>qml/HUD/HudLayout.qml</file>
         <file>resources/model_manifest.json</file>
     </qresource>
 </RCC>
