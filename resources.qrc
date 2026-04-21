@@ -10,8 +10,8 @@
         <file>qml/HUD/TopBar.qml</file>
         <file>qml/HUD/DashboardPanels.qml</file>
         <file>qml/HUD/TranscriptStrip.qml</file>
-        <file>resources/maps/world_map.png</file>
         <file>resources/maps/world_map_day.jpg</file>
+        <file>resources/maps/world_map_night.jpg</file>
         <file>resources/model_manifest.json</file>
     </qresource>
 </RCC>

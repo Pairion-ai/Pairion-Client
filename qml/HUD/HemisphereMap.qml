@@ -50,7 +50,7 @@ Item {
     property bool isDaytime: false
 
     readonly property string daySource:   "qrc:/resources/maps/world_map_day.jpg"
-    readonly property string nightSource: "qrc:/resources/maps/world_map.png"
+    readonly property string nightSource: "qrc:/resources/maps/world_map_night.jpg"
 
     /**
      * @brief Recompute isDaytime from the current local clock.
