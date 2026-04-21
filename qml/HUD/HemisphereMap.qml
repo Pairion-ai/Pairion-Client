@@ -38,7 +38,7 @@ Item {
      * @brief Auto-scroll speed in pixels per frame.
      * Positive = scroll left (eastward). Negative = scroll right (westward).
      */
-    property real scrollSpeed: 0.4
+    property real scrollSpeed: 0.2
 
     // ── Day / night state ─────────────────────────────────────────────────────
 
@@ -211,6 +211,8 @@ Item {
             x: -root.mapOffset
             width: root.width; height: root.height
             source: root.nightSource
+            sourceSize: Qt.size(8192, 4096)
+            asynchronous: true
             fillMode: Image.Stretch; smooth: true; antialiasing: true
             opacity: root.isDaytime ? 0.0 : 1.0
             Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
@@ -221,6 +223,8 @@ Item {
             x: root.width - root.mapOffset
             width: root.width; height: root.height
             source: root.nightSource
+            sourceSize: Qt.size(8192, 4096)
+            asynchronous: true
             fillMode: Image.Stretch; smooth: true; antialiasing: true
             opacity: root.isDaytime ? 0.0 : 1.0
             Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
@@ -231,6 +235,8 @@ Item {
             x: 2 * root.width - root.mapOffset
             width: root.width; height: root.height
             source: root.nightSource
+            sourceSize: Qt.size(8192, 4096)
+            asynchronous: true
             fillMode: Image.Stretch; smooth: true; antialiasing: true
             opacity: root.isDaytime ? 0.0 : 1.0
             Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
@@ -243,6 +249,8 @@ Item {
             x: -root.mapOffset
             width: root.width; height: root.height
             source: root.daySource
+            sourceSize: Qt.size(8192, 4096)
+            asynchronous: true
             fillMode: Image.Stretch; smooth: true; antialiasing: true
             opacity: root.isDaytime ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
@@ -253,6 +261,8 @@ Item {
             x: root.width - root.mapOffset
             width: root.width; height: root.height
             source: root.daySource
+            sourceSize: Qt.size(8192, 4096)
+            asynchronous: true
             fillMode: Image.Stretch; smooth: true; antialiasing: true
             opacity: root.isDaytime ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
@@ -263,6 +273,8 @@ Item {
             x: 2 * root.width - root.mapOffset
             width: root.width; height: root.height
             source: root.daySource
+            sourceSize: Qt.size(8192, 4096)
+            asynchronous: true
             fillMode: Image.Stretch; smooth: true; antialiasing: true
             opacity: root.isDaytime ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
