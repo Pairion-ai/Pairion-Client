@@ -125,4 +125,15 @@ void ConnectionState::clearLlmResponse() {
     }
 }
 
+QString ConnectionState::backgroundContext() const {
+    return m_backgroundContext;
+}
+
+void ConnectionState::setBackgroundContext(const QString &context) {
+    if (m_backgroundContext != context) {
+        m_backgroundContext = context;
+        emit backgroundContextChanged();
+    }
+}
+
 } // namespace pairion::state

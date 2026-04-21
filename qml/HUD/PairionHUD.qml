@@ -28,6 +28,21 @@ Item {
         color: "#070c18"
     }
 
+    // ── Context-driven background (space, etc.) ───────────────────────────────
+    // Sits below the globe layer. When context is "earth" this layer is fully
+    // transparent so the globe dominates. For other contexts it fades in while
+    // the globe fades out.
+
+    ContextBackground {
+        id: contextBg
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: topBar.bottom
+        anchors.bottom: dashboardPanels.top
+        anchors.bottomMargin: 4
+        context: ConnectionState.backgroundContext
+    }
+
     // ── World map (full background) ───────────────────────────────────────────
 
     HemisphereMap {
@@ -37,6 +52,9 @@ Item {
         anchors.top: topBar.bottom
         anchors.bottom: dashboardPanels.top
         anchors.bottomMargin: 4
+
+        opacity: ConnectionState.backgroundContext === "earth" ? 1.0 : 0.0
+        Behavior on opacity { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
 
         pins: [
             { lat: 32.7767, lon: -96.7970, city: "Dallas",    headline: "Market Volatility" },

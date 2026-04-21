@@ -34,6 +34,7 @@ class ConnectionState : public QObject {
     Q_PROPERTY(QString llmResponse READ llmResponse NOTIFY llmResponseChanged)
     Q_PROPERTY(QString agentState READ agentState NOTIFY agentStateChanged)
     Q_PROPERTY(QString voiceState READ voiceState NOTIFY voiceStateChanged)
+    Q_PROPERTY(QString backgroundContext READ backgroundContext NOTIFY backgroundContextChanged)
 
   public:
     /**
@@ -90,6 +91,12 @@ class ConnectionState : public QObject {
     QString agentState() const;
     /// Current voice pipeline state (idle, awaiting_wake, streaming, ending_speech).
     QString voiceState() const;
+    /**
+     * @brief Active background context driving the HUD scene behind the globe.
+     * Values: "earth" (default globe view) or "space" (star-field scene).
+     * Additional contexts can be added by extending ContextBackground.qml.
+     */
+    QString backgroundContext() const;
 
   public slots:
     /**
@@ -126,6 +133,11 @@ class ConnectionState : public QObject {
     void setTranscriptFinal(const QString &text);
     void setAgentState(const QString &state);
     void setVoiceState(const QString &state);
+    /**
+     * @brief Set the background context, emitting backgroundContextChanged if changed.
+     * @param context Context string, e.g. "earth" or "space".
+     */
+    void setBackgroundContext(const QString &context);
     /// @brief Append an LLM token delta to the response accumulator.
     void appendLlmToken(const QString &delta);
     /// @brief Clear the accumulated LLM response.
@@ -147,6 +159,8 @@ class ConnectionState : public QObject {
     void llmResponseChanged();
     void agentStateChanged();
     void voiceStateChanged();
+    /// Emitted when the background context changes.
+    void backgroundContextChanged();
 
   private:
     Status m_status = Disconnected;
@@ -159,6 +173,7 @@ class ConnectionState : public QObject {
     QString m_llmResponse;
     QString m_agentState;
     QString m_voiceState;
+    QString m_backgroundContext = QStringLiteral("earth");
 };
 
 } // namespace pairion::state

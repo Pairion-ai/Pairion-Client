@@ -185,6 +185,10 @@ add_executable(tst_constants test/tst_constants.cpp)
 target_link_libraries(tst_constants PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_constants COMMAND tst_constants)
 
+add_executable(tst_connection_state test/tst_connection_state.cpp)
+target_link_libraries(tst_connection_state PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_connection_state COMMAND tst_connection_state)
+
 # --------------------------------------------------------------------------
 # Coverage target
 # --------------------------------------------------------------------------

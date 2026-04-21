@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import "Debug"
 import "HUD"
+import Pairion
 
 /**
  * Root application window.
@@ -62,4 +63,22 @@ ApplicationWindow {
     Shortcut { sequence: "3"; onActivated: if (root.hudActive) hud.focusPin(2) }
     Shortcut { sequence: "4"; onActivated: if (root.hudActive) hud.focusPin(3) }
     Shortcut { sequence: "5"; onActivated: if (root.hudActive) hud.focusPin(4) }
+
+    // ── Background context shortcuts (test / demo) ────────────────────────────
+    // "B" cycles through background contexts: earth → space → earth …
+    // In production, ConnectionState.setBackgroundContext() is called by the
+    // server-side WebSocket handler when Jasper detects a topic change.
+
+    readonly property var backgroundContexts: ["earth", "space"]
+
+    Shortcut {
+        sequence: "B"
+        onActivated: {
+            if (!root.hudActive) return
+            var contexts = root.backgroundContexts
+            var current  = ConnectionState.backgroundContext
+            var next     = contexts[(contexts.indexOf(current) + 1) % contexts.length]
+            ConnectionState.setBackgroundContext(next)
+        }
+    }
 }

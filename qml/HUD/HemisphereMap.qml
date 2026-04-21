@@ -40,6 +40,35 @@ Item {
      */
     property real scrollSpeed: 0.4
 
+    // ── Day / night state ─────────────────────────────────────────────────────
+
+    /**
+     * @brief True when the user's local clock is between 06:00 and 20:00.
+     * Drives the crossfade between the NASA Blue Marble (daytime) and
+     * Black Marble (nighttime) map layers. Re-evaluated every 60 s.
+     */
+    property bool isDaytime: false
+
+    readonly property string daySource:   "qrc:/resources/maps/world_map_day.jpg"
+    readonly property string nightSource: "qrc:/resources/maps/world_map.png"
+
+    /**
+     * @brief Recompute isDaytime from the current local clock.
+     */
+    function updateDayNight() {
+        var h = new Date().getHours()
+        isDaytime = (h >= 6 && h < 20)
+    }
+
+    Component.onCompleted: updateDayNight()
+
+    Timer {
+        interval: 60000   // re-check every minute
+        repeat:   true
+        running:  true
+        onTriggered: root.updateDayNight()
+    }
+
     // ── Internal state ────────────────────────────────────────────────────────
 
     readonly property real lonShift: 30.0
@@ -175,28 +204,68 @@ Item {
         scale:  root.zoomScale
         transformOrigin: Item.Center   // expand toward all edges equally
 
-        // Left neighbour — visible when scrolling right / zooming into western pins
+        // ── Night map copies (NASA Black Marble) ──────────────────────────────
+
+        // Left neighbour — night
         Image {
             x: -root.mapOffset
             width: root.width; height: root.height
-            source: "qrc:/resources/maps/world_map.png"
+            source: root.nightSource
             fillMode: Image.Stretch; smooth: true; antialiasing: true
+            opacity: root.isDaytime ? 0.0 : 1.0
+            Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
         }
 
-        // Centre copy — fills the screen at mapOffset == width
+        // Centre copy — night
         Image {
             x: root.width - root.mapOffset
             width: root.width; height: root.height
-            source: "qrc:/resources/maps/world_map.png"
+            source: root.nightSource
             fillMode: Image.Stretch; smooth: true; antialiasing: true
+            opacity: root.isDaytime ? 0.0 : 1.0
+            Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
         }
 
-        // Right neighbour — visible when scrolling left / zooming into eastern pins
+        // Right neighbour — night
         Image {
             x: 2 * root.width - root.mapOffset
             width: root.width; height: root.height
-            source: "qrc:/resources/maps/world_map.png"
+            source: root.nightSource
             fillMode: Image.Stretch; smooth: true; antialiasing: true
+            opacity: root.isDaytime ? 0.0 : 1.0
+            Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
+        }
+
+        // ── Day map copies (NASA Blue Marble) ─────────────────────────────────
+
+        // Left neighbour — day
+        Image {
+            x: -root.mapOffset
+            width: root.width; height: root.height
+            source: root.daySource
+            fillMode: Image.Stretch; smooth: true; antialiasing: true
+            opacity: root.isDaytime ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
+        }
+
+        // Centre copy — day
+        Image {
+            x: root.width - root.mapOffset
+            width: root.width; height: root.height
+            source: root.daySource
+            fillMode: Image.Stretch; smooth: true; antialiasing: true
+            opacity: root.isDaytime ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
+        }
+
+        // Right neighbour — day
+        Image {
+            x: 2 * root.width - root.mapOffset
+            width: root.width; height: root.height
+            source: root.daySource
+            fillMode: Image.Stretch; smooth: true; antialiasing: true
+            opacity: root.isDaytime ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
         }
 
         // ── News pins (inside container so they scale with the zoom) ──────────
