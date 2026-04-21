@@ -136,7 +136,7 @@ class TestAudioSessionOrchestrator : public QObject {
         wsClient.disconnectFromServer();
     }
 
-    /// Verify speechStarted in ConversationWaiting starts a new stream without wake word.
+    /// Verify speechStarted in ConversationWaiting starts a new stream after gate is released.
     void speechStartedInConversationWaitingStartsNewStream() {
         MockServer server;
         ConnectionState connState;
@@ -157,10 +157,14 @@ class TestAudioSessionOrchestrator : public QObject {
 
         orch.startListening();
         emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
-        emit vad.speechEnded(); // → ConversationWaiting
+        emit vad.speechEnded(); // → ConversationWaiting, gate = true
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
 
-        // Simulate VAD detecting speech again — should start new stream
+        // Server audio response ends → gate released
+        emit wsClient.audioStreamEndOutReceived(QStringLiteral("out-1"),
+                                                QStringLiteral("normal"));
+
+        // VAD detects user speech — should start new stream
         emit vad.speechStarted();
 
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Streaming);
@@ -387,7 +391,7 @@ class TestAudioSessionOrchestrator : public QObject {
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
     }
 
-    /// Verify speechStarted is ignored while TTS playback is active (m_playbackActive guard).
+    /// Verify speechStarted is blocked immediately on ConversationWaiting entry (before TTS even starts).
     void speechStartedIgnoredDuringPlayback() {
         MockServer server;
         ConnectionState connState;
@@ -410,13 +414,10 @@ class TestAudioSessionOrchestrator : public QObject {
 
         orch.startListening();
         emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
-        emit vad.speechEnded(); // → ConversationWaiting
+        emit vad.speechEnded(); // → ConversationWaiting, m_playbackActive = true immediately
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
 
-        // Simulate TTS starting — sets m_playbackActive = true
-        emit playback.speakingStateChanged(QStringLiteral("speaking"));
-
-        // VAD fires during playback — must be ignored
+        // VAD fires before TTS even starts — must be blocked by the early gate
         emit vad.speechStarted();
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
         QCOMPARE(wakeSpy.count(), 1); // no new stream started
@@ -424,7 +425,7 @@ class TestAudioSessionOrchestrator : public QObject {
         wsClient.disconnectFromServer();
     }
 
-    /// Verify onTtsPlaybackFinished clears m_playbackActive and allows next speechStarted.
+    /// Verify speechStarted is allowed after the inbound stream ends (gate released).
     void speechStartedAllowedAfterPlaybackFinished() {
         MockServer server;
         ConnectionState connState;
@@ -447,14 +448,14 @@ class TestAudioSessionOrchestrator : public QObject {
 
         orch.startListening();
         emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
-        emit vad.speechEnded(); // → ConversationWaiting
+        emit vad.speechEnded(); // → ConversationWaiting, gate = true
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
 
-        // TTS plays then finishes
-        emit playback.speakingStateChanged(QStringLiteral("speaking"));
-        emit playback.speakingStateChanged(QStringLiteral("idle")); // clears m_playbackActive
+        // Server sends back an audio response — stream ends → gate released
+        emit wsClient.audioStreamEndOutReceived(QStringLiteral("out-1"),
+                                                QStringLiteral("normal"));
 
-        // Now speechStarted should trigger a new stream
+        // Now VAD fires — should trigger new stream
         emit vad.speechStarted();
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Streaming);
         QCOMPARE(wakeSpy.count(), 2);

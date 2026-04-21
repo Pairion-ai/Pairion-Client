@@ -176,6 +176,9 @@ void AudioSessionOrchestrator::endStream(const QString &reason) {
     m_activeStreamId.clear();
 
     if (m_conversationActive) {
+        // Block VAD immediately — before the server even responds — so mic loopback
+        // during LLM processing and TTS playback cannot trigger a new stream.
+        m_playbackActive = true;
         transitionTo(State::ConversationWaiting);
         m_vad->reset();
         m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
@@ -252,15 +255,10 @@ void AudioSessionOrchestrator::onTtsPlaybackStarted() {
 }
 
 void AudioSessionOrchestrator::onTtsPlaybackFinished() {
-    m_playbackActive = false;
-    if (m_state != State::ConversationWaiting) {
-        return;
-    }
-    // Reset VAD to clear any speech state accumulated during playback, then restart
-    // the idle timer so the user gets a full window to respond.
-    m_vad->reset();
-    m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
-    qCInfo(lcPipeline) << "TTS playback finished — VAD reset, ready for next utterance";
+    // m_playbackActive is cleared definitively in onInboundStreamEnd; this handler
+    // fires from speakingStateChanged("idle") which arrives before the jitter buffer
+    // fully drains, so we do not clear the gate here.
+    qCInfo(lcPipeline) << "TTS playback speaking state went idle";
 }
 
 void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {
@@ -282,6 +280,15 @@ void AudioSessionOrchestrator::onInboundStreamEnd(const QString &streamId, const
     qCInfo(lcPipeline) << "Inbound audio stream ended:" << streamId << "reason:" << reason;
     if (m_playback)
         m_playback->handleStreamEnd(reason);
+    // Release the VAD gate. handleStreamEnd() may have already cleared it via
+    // speakingStateChanged("idle") → onTtsPlaybackFinished(); this covers the case
+    // where no audio was played (m_isSpeaking was never set).
+    m_playbackActive = false;
+    if (m_state == State::ConversationWaiting) {
+        m_vad->reset();
+        m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
+        qCInfo(lcPipeline) << "Inbound stream ended — VAD open, ready for next utterance";
+    }
 }
 
 } // namespace pairion::pipeline
