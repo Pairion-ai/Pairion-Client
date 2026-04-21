@@ -118,6 +118,9 @@ std::optional<InboundMessage> EnvelopeCodec::deserialize(const QJsonObject &obj)
     if (type == QLatin1String("MapClear")) {
         return MapClear{};
     }
+    if (type == QLatin1String("ConversationEnded")) {
+        return ConversationEnded{};
+    }
 
     return std::nullopt;
 }

@@ -43,9 +43,20 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
                 });
     }
 
+    connect(m_vad, &pairion::vad::SileroVad::speechStarted, this,
+            &AudioSessionOrchestrator::onSpeechStarted);
+
     m_streamingTimeout.setSingleShot(true);
     connect(&m_streamingTimeout, &QTimer::timeout, this,
             &AudioSessionOrchestrator::onStreamingTimeout);
+
+    m_conversationIdleTimer.setSingleShot(true);
+    connect(&m_conversationIdleTimer, &QTimer::timeout, this,
+            &AudioSessionOrchestrator::onConversationIdleTimeout);
+
+    connect(m_wsClient, &pairion::ws::PairionWebSocketClient::conversationEndedReceived, this,
+            &AudioSessionOrchestrator::onConversationEnded);
+
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::binaryFrameReceived, this,
             &AudioSessionOrchestrator::onInboundAudio);
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::audioStreamStartOutReceived, this,
@@ -78,6 +89,8 @@ void AudioSessionOrchestrator::onWakeWordDetected(float score, const QByteArray 
     }
 
     m_activeStreamId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_conversationActive = true;
+    m_connState->setConversationActive(true);
     qCInfo(lcPipeline) << "Wake detected, starting stream:" << m_activeStreamId
                        << "score:" << score;
 
@@ -160,12 +173,61 @@ void AudioSessionOrchestrator::endStream(const QString &reason) {
     QString streamId = m_activeStreamId;
     m_activeStreamId.clear();
 
-    transitionTo(State::Idle);
-    // Automatically restart listening
-    startListening();
+    if (m_conversationActive) {
+        transitionTo(State::ConversationWaiting);
+        m_vad->reset();
+        m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
+        qCInfo(lcPipeline) << "Conversation mode: waiting for next utterance";
+    } else {
+        transitionTo(State::Idle);
+        startListening();
+    }
 
     emit streamEnded(streamId);
 }
+
+void AudioSessionOrchestrator::onSpeechStarted() {
+    if (m_state != State::ConversationWaiting) {
+        return;
+    }
+    m_conversationIdleTimer.stop();
+
+    m_activeStreamId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    qCInfo(lcPipeline) << "Conversation: speech detected, starting stream:" << m_activeStreamId;
+
+    protocol::AudioStreamStartIn startMsg;
+    startMsg.streamId = m_activeStreamId;
+    m_wsClient->sendMessage(startMsg);
+
+    transitionTo(State::Streaming);
+    m_streamingTimeout.start(kStreamingTimeoutMs);
+
+    emit wakeFired(m_activeStreamId);
+}
+
+void AudioSessionOrchestrator::onConversationEnded() {
+    qCInfo(lcPipeline) << "Conversation ended by server";
+    m_conversationActive = false;
+    m_connState->setConversationActive(false);
+    m_conversationIdleTimer.stop();
+    if (m_state == State::ConversationWaiting) {
+        transitionTo(State::Idle);
+        startListening();
+    }
+}
+
+// LCOV_EXCL_START — 30 s idle timeout not exercisable in unit tests
+void AudioSessionOrchestrator::onConversationIdleTimeout() {
+    if (m_state != State::ConversationWaiting) {
+        return;
+    }
+    qCInfo(lcPipeline) << "Conversation idle timeout — returning to wake-word mode";
+    m_conversationActive = false;
+    m_connState->setConversationActive(false);
+    transitionTo(State::Idle);
+    startListening();
+}
+// LCOV_EXCL_STOP
 
 void AudioSessionOrchestrator::transitionTo(State newState) {
     if (m_state == newState) {
@@ -173,7 +235,7 @@ void AudioSessionOrchestrator::transitionTo(State newState) {
     }
 
     static constexpr const char *kStateNames[] = {"idle", "awaiting_wake", "streaming",
-                                                  "ending_speech"};
+                                                  "ending_speech", "conversation_waiting"};
     m_state = newState;
     m_connState->setVoiceState(QString::fromUtf8(kStateNames[static_cast<int>(newState)]));
 }

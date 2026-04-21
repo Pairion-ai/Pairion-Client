@@ -103,6 +103,8 @@ class PairionWebSocketClient : public QObject {
     void audioStreamStartOutReceived(const QString &streamId);
     /// Emitted when an AudioStreamEnd message arrives from the server.
     void audioStreamEndOutReceived(const QString &streamId, const QString &reason);
+    /// Emitted when the server signals the end of the conversation session.
+    void conversationEndedReceived();
 
   private slots:
     void onConnected();

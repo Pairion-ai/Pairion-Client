@@ -351,6 +351,17 @@ class TestMessageCodec : public QObject {
         QVERIFY(msg != nullptr);
     }
 
+    /// Verify ConversationEnded deserializes correctly.
+    void deserializeConversationEnded() {
+        QJsonObject obj;
+        obj["type"] = QStringLiteral("ConversationEnded");
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<ConversationEnded>(&result.value());
+        QVERIFY(msg != nullptr);
+    }
+
     /// Verify unknown type returns nullopt.
     void deserializeUnknownType() {
         QJsonObject obj;

@@ -35,8 +35,11 @@ class AudioSessionOrchestrator : public QObject {
   public:
     /**
      * @brief Pipeline states.
+     *
+     * ConversationWaiting is entered after speech ends while conversation mode is active.
+     * The VAD remains listening; the next speechStarted re-opens the stream without a wake word.
      */
-    enum class State { Idle, AwaitingWake, Streaming, EndingSpeech };
+    enum class State { Idle, AwaitingWake, Streaming, EndingSpeech, ConversationWaiting };
 
     /**
      * @brief Construct the orchestrator with all pipeline dependencies.
@@ -66,9 +69,12 @@ class AudioSessionOrchestrator : public QObject {
 
   private slots:
     void onWakeWordDetected(float score, const QByteArray &preRollBuffer);
+    void onSpeechStarted();
     void onSpeechEnded();
     void onOpusFrameEncoded(const QByteArray &opusFrame);
     void onStreamingTimeout();
+    void onConversationEnded();
+    void onConversationIdleTimeout();
     void onInboundAudio(const QByteArray &binaryFrame);
     void onInboundAudioStreamStart(const QString &streamId);
     void onInboundStreamEnd(const QString &streamId, const QString &reason);
@@ -90,8 +96,11 @@ class AudioSessionOrchestrator : public QObject {
     State m_state = State::Idle;
     QString m_activeStreamId;
     QTimer m_streamingTimeout;
+    bool m_conversationActive = false;
+    QTimer m_conversationIdleTimer;
 
     static constexpr int kStreamingTimeoutMs = 30000;
+    static constexpr int kConversationIdleTimeoutMs = 30000;
 };
 
 } // namespace pairion::pipeline

@@ -102,8 +102,8 @@ class TestAudioSessionOrchestrator : public QObject {
         wsClient.disconnectFromServer();
     }
 
-    /// Verify speech ended transitions back to Idle (then auto-restarts listening).
-    void speechEndedTransitions() {
+    /// Verify wake then speech-ended enters ConversationWaiting (conversation mode on by default).
+    void speechEndedEntersConversationWaiting() {
         MockServer server;
         ConnectionState connState;
         PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
@@ -124,15 +124,119 @@ class TestAudioSessionOrchestrator : public QObject {
         orch.startListening();
         emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Streaming);
+        QVERIFY(connState.conversationActive());
 
-        // Simulate speech ended
+        // Simulate speech ended — should enter ConversationWaiting, not AwaitingWake
         emit vad.speechEnded();
 
         QCOMPARE(endSpy.count(), 1);
-        // Auto-restarts to AwaitingWake
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
+        QCOMPARE(connState.voiceState(), QStringLiteral("conversation_waiting"));
+
+        wsClient.disconnectFromServer();
+    }
+
+    /// Verify speechStarted in ConversationWaiting starts a new stream without wake word.
+    void speechStartedInConversationWaitingStartsNewStream() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+        QSignalSpy sessionSpy(&wsClient, &PairionWebSocketClient::sessionOpened);
+        wsClient.connectToServer();
+        QVERIFY(sessionSpy.wait(5000));
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        QSignalSpy wakeSpy(&orch, &AudioSessionOrchestrator::wakeFired);
+
+        orch.startListening();
+        emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
+        emit vad.speechEnded(); // → ConversationWaiting
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
+
+        // Simulate VAD detecting speech again — should start new stream
+        emit vad.speechStarted();
+
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Streaming);
+        QCOMPARE(wakeSpy.count(), 2); // one from wake word, one from conversation re-trigger
+
+        wsClient.disconnectFromServer();
+    }
+
+    /// Verify conversationEnded signal exits conversation mode and returns to AwaitingWake.
+    void conversationEndedExitsConversationMode() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+        QSignalSpy sessionSpy(&wsClient, &PairionWebSocketClient::sessionOpened);
+        wsClient.connectToServer();
+        QVERIFY(sessionSpy.wait(5000));
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        orch.startListening();
+        emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
+        emit vad.speechEnded(); // → ConversationWaiting
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
+
+        // Server signals conversation is over
+        emit wsClient.conversationEndedReceived();
+
+        QVERIFY(!connState.conversationActive());
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
 
         wsClient.disconnectFromServer();
+    }
+
+    /// Verify speechStarted is a no-op when not in ConversationWaiting state.
+    void speechStartedGuardWhenNotConversationWaiting() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        orch.startListening(); // AwaitingWake — not ConversationWaiting
+        emit vad.speechStarted(); // must be ignored
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
+    }
+
+    /// Verify conversationEnded is a no-op when not in ConversationWaiting state.
+    void conversationEndedGuardWhenNotConversationWaiting() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState);
+        orch.startListening(); // AwaitingWake
+        // conversationEnded while AwaitingWake — must not crash or double-transition
+        emit wsClient.conversationEndedReceived();
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::AwaitingWake);
     }
 
     /// Verify shutdown stops the pipeline.

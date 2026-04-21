@@ -226,11 +226,22 @@ struct MapClear {
     static constexpr const char *kType = "MapClear";
 };
 
+/**
+ * @brief Server command to exit conversation mode and return to wake-word listening.
+ *
+ * Emitted when the user says a dismissal phrase such as "that's all" or "goodbye".
+ * The client should stop auto-relistening after the current response and re-arm the
+ * wake-word detector.
+ */
+struct ConversationEnded {
+    static constexpr const char *kType = "ConversationEnded";
+};
+
 /// Variant of all inbound text-frame message types.
 using InboundMessage =
     std::variant<SessionOpened, SessionClosed, HeartbeatPong, ErrorMessage, AgentStateChange,
                  TranscriptPartial, TranscriptFinal, LlmTokenStream, ToolCallStarted,
                  ToolCallCompleted, AudioStreamStartOut, AudioStreamEndOut, UnderBreathAck,
-                 MapFocus, MapClear>;
+                 MapFocus, MapClear, ConversationEnded>;
 
 } // namespace pairion::protocol
