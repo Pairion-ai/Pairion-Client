@@ -2,6 +2,9 @@
     <qresource prefix="/">
         <file>qml/Main.qml</file>
         <file>qml/Debug/DebugPanel.qml</file>
+        <file>qml/HUD/PairionHUD.qml</file>
+        <file>qml/HUD/RingSystem.qml</file>
+        <file>qml/HUD/FpsCounter.qml</file>
         <file>resources/model_manifest.json</file>
     </qresource>
 </RCC>

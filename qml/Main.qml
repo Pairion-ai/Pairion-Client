@@ -1,21 +1,63 @@
 import QtQuick
 import QtQuick.Controls
 import "Debug"
+import "HUD"
 
 /**
- * Root application window. At M0, displays the debug panel.
- * In later milestones, switches between debug and HUD based on state.
+ * Root application window.
+ *
+ * Full-screen cinematic HUD is shown by default. F12 toggles between the HUD
+ * and the debug panel. F11 toggles the HUD's built-in FPS counter. Escape
+ * exits the application.
  */
 ApplicationWindow {
     id: root
-    width: 480
-    height: 640
+    visibility: Window.FullScreen
     visible: true
-    title: "Pairion — Debug"
-    color: "#1a1a2e"
+    title: "Pairion"
+    color: "#0a0e1a"
 
-    DebugPanel {
+    // true → show HUD, false → show DebugPanel
+    property bool hudActive: true
+
+    // ── HUD ───────────────────────────────────────────────────────────────────
+
+    PairionHUD {
+        id: hud
         anchors.fill: parent
-        anchors.margins: 16
+        visible: root.hudActive
+    }
+
+    // ── Debug panel ───────────────────────────────────────────────────────────
+
+    Rectangle {
+        anchors.fill: parent
+        color: "#1a1a2e"
+        visible: !root.hudActive
+
+        DebugPanel {
+            anchors.fill: parent
+            anchors.margins: 16
+        }
+    }
+
+    // ── Keyboard shortcuts ────────────────────────────────────────────────────
+
+    // F12 — toggle HUD ↔ Debug panel
+    Shortcut {
+        sequence:  "F12"
+        onActivated: root.hudActive = !root.hudActive
+    }
+
+    // F11 — toggle FPS counter (only meaningful when HUD is visible)
+    Shortcut {
+        sequence:  "F11"
+        onActivated: if (root.hudActive) hud.toggleFps()
+    }
+
+    // Escape — exit application
+    Shortcut {
+        sequence:  "Escape"
+        onActivated: Qt.quit()
     }
 }
