@@ -28,7 +28,7 @@ Item {
     property var pins: []
 
     /**
-     * @brief Index into pins[] that Jarvis is currently narrating. -1 = none.
+     * @brief Index into pins[] that Alfred is currently narrating. -1 = none.
      * Set this from the outside (ConnectionState binding or test shortcut) to
      * trigger pan + zoom. Reset to -1 to zoom out and resume auto-scroll.
      */
