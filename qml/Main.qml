@@ -55,7 +55,7 @@ ApplicationWindow {
     // ── News-pin focus shortcuts (test / demo) ────────────────────────────────
     // Keys 1–5 pan + zoom to each news pin. Key 0 clears focus and resumes
     // globe auto-scroll. These shortcuts will be replaced by ConnectionState
-    // bindings when Alfred news narration is wired.
+    // bindings when Jarvis news narration is wired.
 
     Shortcut { sequence: "0"; onActivated: if (root.hudActive) hud.focusPin(-1) }
     Shortcut { sequence: "1"; onActivated: if (root.hudActive) hud.focusPin(0) }

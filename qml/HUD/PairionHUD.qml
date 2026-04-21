@@ -17,7 +17,7 @@ Item {
      * @brief Pan + zoom the world map to the pin at the given index.
      * Pass -1 to zoom out and resume auto-scroll.
      * Called by Main.qml test shortcuts today; wired to ConnectionState when
-     * Alfred news narration is implemented.
+     * Jarvis news narration is implemented.
      */
     function focusPin(index) { worldMap.activePinIndex = index }
 
@@ -56,7 +56,7 @@ Item {
         opacity: ConnectionState.backgroundContext === "earth" ? 1.0 : 0.0
         Behavior on opacity { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
 
-        // Server-driven map focus: Alfred focuses the globe via the MapFocus WebSocket message.
+        // Server-driven map focus: Jarvis focuses the globe via the MapFocus WebSocket message.
         // Setting serverFocus to null (MapClear) resumes auto-scroll.
         serverFocus: ConnectionState.mapFocusActive
                      ? ({ "lat":  ConnectionState.mapFocusLat,
@@ -73,7 +73,7 @@ Item {
         ]
     }
 
-    // ── Ring system — visible only while Alfred is speaking ──────────────────
+    // ── Ring system — visible only while Jarvis is speaking ──────────────────
 
     RingSystem {
         id: rings
