@@ -155,9 +155,6 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
             } else if constexpr (std::is_same_v<T, protocol::MapClear>) {
                 qCInfo(lcWs) << "Map clear";
                 m_connState->clearMapFocus();
-            } else if constexpr (std::is_same_v<T, protocol::ConversationEnded>) {
-                qCInfo(lcWs) << "Conversation ended";
-                emit conversationEndedReceived();
             }
         },
         msg);

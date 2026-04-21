@@ -40,7 +40,6 @@ class ConnectionState : public QObject {
     Q_PROPERTY(double mapFocusLon READ mapFocusLon NOTIFY mapFocusChanged)
     Q_PROPERTY(QString mapFocusLabel READ mapFocusLabel NOTIFY mapFocusChanged)
     Q_PROPERTY(QString mapFocusZoom READ mapFocusZoom NOTIFY mapFocusChanged)
-    Q_PROPERTY(bool conversationActive READ conversationActive NOTIFY conversationActiveChanged)
 
   public:
     /**
@@ -106,8 +105,6 @@ class ConnectionState : public QObject {
 
     /// @brief True when a MapFocus is active (server has focused the map on a location).
     bool mapFocusActive() const;
-    /// @brief True when conversation mode is active (Jarvis stays engaged without a wake word).
-    bool conversationActive() const;
     /// @brief Latitude of the active map focus in decimal degrees.
     double mapFocusLat() const;
     /// @brief Longitude of the active map focus in decimal degrees.
@@ -171,11 +168,6 @@ class ConnectionState : public QObject {
     void setMapFocus(double lat, double lon, const QString &label, const QString &zoom);
     /// @brief Clear the active map focus and resume globe auto-scroll.
     void clearMapFocus();
-    /**
-     * @brief Set whether conversation mode is currently active.
-     * @param active true when Jarvis is engaged and re-listens after each turn without wake word.
-     */
-    void setConversationActive(bool active);
 
   signals:
     /// Emitted when connection status changes.
@@ -197,8 +189,6 @@ class ConnectionState : public QObject {
     void backgroundContextChanged();
     /// Emitted when the map focus state changes (set or cleared).
     void mapFocusChanged();
-    /// Emitted when conversation mode is activated or deactivated.
-    void conversationActiveChanged();
 
   private:
     Status m_status = Disconnected;
@@ -217,7 +207,6 @@ class ConnectionState : public QObject {
     double m_mapFocusLon = 0.0;
     QString m_mapFocusLabel;
     QString m_mapFocusZoom;
-    bool m_conversationActive = false;
 };
 
 } // namespace pairion::state

@@ -39,36 +39,13 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
                 [this](const QString &state) {
                     if (state == QLatin1String("speaking")) {
                         onTtsPlaybackStarted();
-                    } else if (state == QLatin1String("idle")) {
-                        onTtsPlaybackFinished();
                     }
                 });
     }
 
-    connect(m_vad, &pairion::vad::SileroVad::speechStarted, this,
-            &AudioSessionOrchestrator::onSpeechStarted);
-
     m_streamingTimeout.setSingleShot(true);
     connect(&m_streamingTimeout, &QTimer::timeout, this,
             &AudioSessionOrchestrator::onStreamingTimeout);
-
-    m_conversationIdleTimer.setSingleShot(true);
-    connect(&m_conversationIdleTimer, &QTimer::timeout, this,
-            &AudioSessionOrchestrator::onConversationIdleTimeout);
-
-    m_postPlaybackCooldown.setSingleShot(true);
-    connect(&m_postPlaybackCooldown, &QTimer::timeout, this, [this]() {
-        m_playbackActive = false;
-        if (m_state == State::ConversationWaiting) {
-            m_vad->reset();
-            m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
-            qCInfo(lcPipeline) << "Post-playback cooldown expired — mic open for next utterance";
-        }
-    });
-
-    connect(m_wsClient, &pairion::ws::PairionWebSocketClient::conversationEndedReceived, this,
-            &AudioSessionOrchestrator::onConversationEnded);
-
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::binaryFrameReceived, this,
             &AudioSessionOrchestrator::onInboundAudio);
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::audioStreamStartOutReceived, this,
@@ -101,8 +78,6 @@ void AudioSessionOrchestrator::onWakeWordDetected(float score, const QByteArray 
     }
 
     m_activeStreamId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    m_conversationActive = true;
-    m_connState->setConversationActive(true);
     qCInfo(lcPipeline) << "Wake detected, starting stream:" << m_activeStreamId
                        << "score:" << score;
 
@@ -185,64 +160,12 @@ void AudioSessionOrchestrator::endStream(const QString &reason) {
     QString streamId = m_activeStreamId;
     m_activeStreamId.clear();
 
-    if (m_conversationActive) {
-        // Block VAD immediately — before the server even responds — so mic loopback
-        // during LLM processing and TTS playback cannot trigger a new stream.
-        m_playbackActive = true;
-        transitionTo(State::ConversationWaiting);
-        m_vad->reset();
-        m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
-        qCInfo(lcPipeline) << "Conversation mode: waiting for next utterance";
-    } else {
-        transitionTo(State::Idle);
-        startListening();
-    }
+    transitionTo(State::Idle);
+    // Automatically restart listening
+    startListening();
 
     emit streamEnded(streamId);
 }
-
-void AudioSessionOrchestrator::onSpeechStarted() {
-    if (m_state != State::ConversationWaiting || m_playbackActive) {
-        return;
-    }
-    m_conversationIdleTimer.stop();
-
-    m_activeStreamId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    qCInfo(lcPipeline) << "Conversation: speech detected, starting stream:" << m_activeStreamId;
-
-    protocol::AudioStreamStartIn startMsg;
-    startMsg.streamId = m_activeStreamId;
-    m_wsClient->sendMessage(startMsg);
-
-    transitionTo(State::Streaming);
-    m_streamingTimeout.start(kStreamingTimeoutMs);
-
-    emit wakeFired(m_activeStreamId);
-}
-
-void AudioSessionOrchestrator::onConversationEnded() {
-    qCInfo(lcPipeline) << "Conversation ended by server";
-    m_conversationActive = false;
-    m_connState->setConversationActive(false);
-    m_conversationIdleTimer.stop();
-    if (m_state == State::ConversationWaiting) {
-        transitionTo(State::Idle);
-        startListening();
-    }
-}
-
-// LCOV_EXCL_START — 30 s idle timeout not exercisable in unit tests
-void AudioSessionOrchestrator::onConversationIdleTimeout() {
-    if (m_state != State::ConversationWaiting) {
-        return;
-    }
-    qCInfo(lcPipeline) << "Conversation idle timeout — returning to wake-word mode";
-    m_conversationActive = false;
-    m_connState->setConversationActive(false);
-    transitionTo(State::Idle);
-    startListening();
-}
-// LCOV_EXCL_STOP
 
 void AudioSessionOrchestrator::transitionTo(State newState) {
     if (m_state == newState) {
@@ -250,25 +173,17 @@ void AudioSessionOrchestrator::transitionTo(State newState) {
     }
 
     static constexpr const char *kStateNames[] = {"idle", "awaiting_wake", "streaming",
-                                                  "ending_speech", "conversation_waiting"};
+                                                  "ending_speech"};
     m_state = newState;
     m_connState->setVoiceState(QString::fromUtf8(kStateNames[static_cast<int>(newState)]));
 }
 
 void AudioSessionOrchestrator::onTtsPlaybackStarted() {
-    m_playbackActive = true;
     if (m_state != State::Streaming) {
         return;
     }
     qCInfo(lcPipeline) << "TTS playback started — ending upload stream to prevent mic loopback";
     endStream(QStringLiteral("normal"));
-}
-
-void AudioSessionOrchestrator::onTtsPlaybackFinished() {
-    // m_playbackActive is cleared definitively in onInboundStreamEnd; this handler
-    // fires from speakingStateChanged("idle") which arrives before the jitter buffer
-    // fully drains, so we do not clear the gate here.
-    qCInfo(lcPipeline) << "TTS playback speaking state went idle";
 }
 
 void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {
@@ -290,16 +205,6 @@ void AudioSessionOrchestrator::onInboundStreamEnd(const QString &streamId, const
     qCInfo(lcPipeline) << "Inbound audio stream ended:" << streamId << "reason:" << reason;
     if (m_playback)
         m_playback->handleStreamEnd(reason);
-    // Start cooldown before releasing the VAD gate. The OS audio buffer may still
-    // hold several hundred milliseconds of TTS audio; releasing immediately causes
-    // VAD to pick up the tail as speech and trigger a false new stream.
-    if (m_state == State::ConversationWaiting) {
-        m_postPlaybackCooldown.start(kPostPlaybackCooldownMs);
-        qCInfo(lcPipeline) << "Inbound stream ended — starting" << kPostPlaybackCooldownMs
-                           << "ms post-playback cooldown";
-    } else {
-        m_playbackActive = false;
-    }
 }
 
 } // namespace pairion::pipeline

@@ -173,15 +173,4 @@ void ConnectionState::clearMapFocus() {
     }
 }
 
-bool ConnectionState::conversationActive() const {
-    return m_conversationActive;
-}
-
-void ConnectionState::setConversationActive(bool active) {
-    if (m_conversationActive != active) {
-        m_conversationActive = active;
-        emit conversationActiveChanged();
-    }
-}
-
 } // namespace pairion::state
