@@ -79,6 +79,7 @@ class AudioSessionOrchestrator : public QObject {
     void onInboundAudioStreamStart(const QString &streamId);
     void onInboundStreamEnd(const QString &streamId, const QString &reason);
     void onTtsPlaybackStarted();
+    void onTtsPlaybackFinished();
 
   private:
     void transitionTo(State newState);
@@ -97,6 +98,7 @@ class AudioSessionOrchestrator : public QObject {
     QString m_activeStreamId;
     QTimer m_streamingTimeout;
     bool m_conversationActive = false;
+    bool m_playbackActive = false;
     QTimer m_conversationIdleTimer;
 
     static constexpr int kStreamingTimeoutMs = 30000;

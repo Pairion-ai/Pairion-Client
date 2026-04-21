@@ -39,6 +39,8 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
                 [this](const QString &state) {
                     if (state == QLatin1String("speaking")) {
                         onTtsPlaybackStarted();
+                    } else if (state == QLatin1String("idle")) {
+                        onTtsPlaybackFinished();
                     }
                 });
     }
@@ -187,7 +189,7 @@ void AudioSessionOrchestrator::endStream(const QString &reason) {
 }
 
 void AudioSessionOrchestrator::onSpeechStarted() {
-    if (m_state != State::ConversationWaiting) {
+    if (m_state != State::ConversationWaiting || m_playbackActive) {
         return;
     }
     m_conversationIdleTimer.stop();
@@ -241,11 +243,24 @@ void AudioSessionOrchestrator::transitionTo(State newState) {
 }
 
 void AudioSessionOrchestrator::onTtsPlaybackStarted() {
+    m_playbackActive = true;
     if (m_state != State::Streaming) {
         return;
     }
     qCInfo(lcPipeline) << "TTS playback started — ending upload stream to prevent mic loopback";
     endStream(QStringLiteral("normal"));
+}
+
+void AudioSessionOrchestrator::onTtsPlaybackFinished() {
+    m_playbackActive = false;
+    if (m_state != State::ConversationWaiting) {
+        return;
+    }
+    // Reset VAD to clear any speech state accumulated during playback, then restart
+    // the idle timer so the user gets a full window to respond.
+    m_vad->reset();
+    m_conversationIdleTimer.start(kConversationIdleTimeoutMs);
+    qCInfo(lcPipeline) << "TTS playback finished — VAD reset, ready for next utterance";
 }
 
 void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {

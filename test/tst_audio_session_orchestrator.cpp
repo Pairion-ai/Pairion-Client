@@ -387,6 +387,81 @@ class TestAudioSessionOrchestrator : public QObject {
         QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Idle);
     }
 
+    /// Verify speechStarted is ignored while TTS playback is active (m_playbackActive guard).
+    void speechStartedIgnoredDuringPlayback() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+        QSignalSpy sessionSpy(&wsClient, &PairionWebSocketClient::sessionOpened);
+        wsClient.connectToServer();
+        QVERIFY(sessionSpy.wait(5000));
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        PairionAudioPlayback playback;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState,
+                                      &playback);
+        QSignalSpy wakeSpy(&orch, &AudioSessionOrchestrator::wakeFired);
+
+        orch.startListening();
+        emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
+        emit vad.speechEnded(); // → ConversationWaiting
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
+
+        // Simulate TTS starting — sets m_playbackActive = true
+        emit playback.speakingStateChanged(QStringLiteral("speaking"));
+
+        // VAD fires during playback — must be ignored
+        emit vad.speechStarted();
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
+        QCOMPARE(wakeSpy.count(), 1); // no new stream started
+
+        wsClient.disconnectFromServer();
+    }
+
+    /// Verify onTtsPlaybackFinished clears m_playbackActive and allows next speechStarted.
+    void speechStartedAllowedAfterPlaybackFinished() {
+        MockServer server;
+        ConnectionState connState;
+        PairionWebSocketClient wsClient(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                        &connState);
+        QSignalSpy sessionSpy(&wsClient, &PairionWebSocketClient::sessionOpened);
+        wsClient.connectToServer();
+        QVERIFY(sessionSpy.wait(5000));
+
+        PairionAudioCapture capture(static_cast<QIODevice *>(nullptr));
+        PairionOpusEncoder encoder;
+        PairionAudioPlayback playback;
+        MockOnnxSession mel, emb, cls, vadSess;
+        OpenWakewordDetector wake(&mel, &emb, &cls, 0.5);
+        SileroVad vad(&vadSess, 0.5, 800);
+
+        AudioSessionOrchestrator orch(&capture, &encoder, &wake, &vad, &wsClient, &connState,
+                                      &playback);
+        QSignalSpy wakeSpy(&orch, &AudioSessionOrchestrator::wakeFired);
+
+        orch.startListening();
+        emit wake.wakeWordDetected(0.9f, QByteArray(640, '\0'));
+        emit vad.speechEnded(); // → ConversationWaiting
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::ConversationWaiting);
+
+        // TTS plays then finishes
+        emit playback.speakingStateChanged(QStringLiteral("speaking"));
+        emit playback.speakingStateChanged(QStringLiteral("idle")); // clears m_playbackActive
+
+        // Now speechStarted should trigger a new stream
+        emit vad.speechStarted();
+        QCOMPARE(orch.state(), AudioSessionOrchestrator::State::Streaming);
+        QCOMPARE(wakeSpy.count(), 2);
+
+        wsClient.disconnectFromServer();
+    }
+
     /// Verify pre-roll PCM is Opus-encoded and sent as binary frames before live streaming.
     void preRollEncodedAndSentAsBinaryFrames() {
         MockServer server;
