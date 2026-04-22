@@ -24,5 +24,6 @@
         <file>resources/maps/world_map_day.jpg</file>
         <file>resources/maps/world_map_night.jpg</file>
         <file>resources/model_manifest.json</file>
+        <file>resources/adsb/vfr_sectional.png</file>
     </qresource>
 </RCC>

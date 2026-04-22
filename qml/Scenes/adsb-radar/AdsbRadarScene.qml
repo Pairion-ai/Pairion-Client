@@ -1,31 +1,34 @@
 /**
  * @file AdsbRadarScene.qml
- * @brief ADS-B radar scene — live aircraft overlay on a VFR sectional chart background.
+ * @brief ADS-B radar scene — live aircraft overlay on an embedded FAA VFR sectional chart.
  *
  * Displays aircraft positions received via SceneDataPush (modelId="adsb") on top of
- * FAA VFR Sectional chart tiles fetched from the ArcGIS Online tile server. If tiles
- * fail to load, concentric range rings serve as the background reference.
+ * a pre-processed FAA VFR Sectional chart image embedded as a Qt resource. The image
+ * (resources/adsb/vfr_sectional.png) covers exactly the ADS-B bounding box:
+ *   lamin=33.681  lomin=-96.715  lamax=33.947  lomax=-96.449
+ *
+ * Coordinate mapping is a simple linear projection — no Mercator math required because
+ * the image already spans the exact same bounding box as the aircraft data:
+ *   screenX = (lon - LOMIN) / (LOMAX - LOMIN) * width
+ *   screenY = (LAMAX - lat) / (LAMAX - LAMIN) * height
  *
  * Aircraft rendering:
- *   - Airborne GA aircraft: 20×20 cyan arrow silhouette rotated to heading.
- *   - Airborne airline aircraft: 20×20 amber arrow silhouette rotated to heading.
- *     Airline detection uses the callsign pattern: 2–3 uppercase letters followed by digits.
- *   - On-ground aircraft: 6×6 filled dot in the aircraft colour.
+ *   - Airborne GA aircraft: arrow silhouette (cyan) rotated to heading.
+ *   - Airborne airline aircraft: arrow silhouette (amber) rotated to heading.
+ *     Airline detection: callsign matches 2–3 uppercase letters followed by a digit.
+ *   - On-ground aircraft: 6 px filled dot in the aircraft colour.
  *
  * Callout boxes (airborne aircraft only):
  *   - Line 1: identifier — registration if available, else ICAO24.
  *   - Line 2: aircraft type / speed knots / altitude ft.
  *   - Line 3 (airlines with route only): origin→destination.
- *   A connector line runs from the icon centre to the callout box.
+ *   A thin connector line runs from the icon centre to the callout panel.
  *
- * Map centre and zoom are driven by sceneParams:
- *   - centerLat  (default 39.5 — continental US centre)
- *   - centerLon  (default -98.35)
- *   - zoom       (default 8 — roughly 50 nm = 152 px)
+ * Range rings are drawn at 2 nm, 4 nm, and 8 nm from the home location at low
+ * opacity (0.25) so the sectional chart remains the dominant visual layer.
  *
- * The tile layer uses a 7×7 grid of 256 px tiles centered on the computed centre tile,
- * giving full coverage for typical screen sizes at zoom 8. Tiles are loaded lazily;
- * a loading-failure is invisible because the range rings and dark background show through.
+ * To regenerate the sectional PNG after an FAA chart cycle (every 56 days), run:
+ *   python3 scripts/process_vfr_sectional.py
  */
 import QtQuick
 import Pairion
@@ -48,51 +51,21 @@ Item {
     /** @brief Request TTS narration. */
     signal requestSpeak(string text)
 
-    // ── Map parameters ────────────────────────────────────────────
+    // ── Bounding box constants (must match application.yml pairion.data.adsb) ──
 
-    /** @brief Map centre latitude in decimal degrees. */
-    readonly property real centerLat: sceneParams["centerLat"] !== undefined
-                                      ? sceneParams["centerLat"] : 39.5
+    /** @brief Southern boundary of the ADS-B coverage area (degrees). */
+    readonly property real LAMIN:  33.681
+    /** @brief Western boundary of the ADS-B coverage area (degrees). */
+    readonly property real LOMIN: -96.715
+    /** @brief Northern boundary of the ADS-B coverage area (degrees). */
+    readonly property real LAMAX:  33.947
+    /** @brief Eastern boundary of the ADS-B coverage area (degrees). */
+    readonly property real LOMAX: -96.449
 
-    /** @brief Map centre longitude in decimal degrees. */
-    readonly property real centerLon: sceneParams["centerLon"] !== undefined
-                                      ? sceneParams["centerLon"] : -98.35
-
-    /** @brief Tile zoom level (1–12). Default 8 gives ~50 nm ≈ 152 px per ring. */
-    readonly property int  mapZoom:   sceneParams["zoom"] !== undefined
-                                      ? parseInt(sceneParams["zoom"]) : 8
-
-    // ── Derived map geometry ──────────────────────────────────────
-
-    /** @brief Web Mercator world-pixel width at the current zoom level. */
-    readonly property real worldSize: 256.0 * Math.pow(2.0, mapZoom)
-
-    /** @brief World-pixel X coordinate of the map centre. */
-    readonly property real centerPxX: (centerLon + 180.0) / 360.0 * worldSize
-
-    /** @brief World-pixel Y coordinate of the map centre (Mercator). */
-    readonly property real centerPxY: {
-        var sinLat = Math.sin(centerLat * Math.PI / 180.0)
-        return (0.5 - Math.log((1.0 + sinLat) / (1.0 - sinLat)) / (4.0 * Math.PI)) * worldSize
-    }
-
-    /** @brief Column index of the tile that contains the map centre. */
-    readonly property int centerTileX: Math.floor(centerPxX / 256)
-
-    /** @brief Row index of the tile that contains the map centre. */
-    readonly property int centerTileY: Math.floor(centerPxY / 256)
-
-    /**
-     * @brief Screen X of the top-left corner of the centre tile.
-     * Placed so that the map centre pixel aligns with the screen centre.
-     */
-    readonly property real tileOriginX: width  / 2.0 - (centerPxX - centerTileX * 256)
-
-    /**
-     * @brief Screen Y of the top-left corner of the centre tile.
-     * Placed so that the map centre pixel aligns with the screen centre.
-     */
-    readonly property real tileOriginY: height / 2.0 - (centerPxY - centerTileY * 256)
+    /** @brief Home location latitude — centre of range rings. */
+    readonly property real HOME_LAT: 33.814427
+    /** @brief Home location longitude — centre of range rings. */
+    readonly property real HOME_LON: -96.582106
 
     // ── Aircraft data ─────────────────────────────────────────────
 
@@ -108,31 +81,31 @@ Item {
         return []
     }
 
-    // ── Helpers ───────────────────────────────────────────────────
+    // ── Coordinate helpers ────────────────────────────────────────
 
     /**
-     * @brief Returns the screen X position for a given longitude.
+     * @brief Maps a longitude to a screen X pixel using linear interpolation
+     * across the bounding box.
      * @param lon Longitude in decimal degrees.
      * @return Screen X in pixels.
      */
     function lonToScreenX(lon) {
-        var pxX = (lon + 180.0) / 360.0 * worldSize
-        return width / 2.0 + (pxX - centerPxX)
+        return (lon - LOMIN) / (LOMAX - LOMIN) * width
     }
 
     /**
-     * @brief Returns the screen Y position for a given latitude.
+     * @brief Maps a latitude to a screen Y pixel using linear interpolation
+     * across the bounding box. Latitude is inverted: higher lat → smaller Y.
      * @param lat Latitude in decimal degrees.
      * @return Screen Y in pixels.
      */
     function latToScreenY(lat) {
-        var sinLat = Math.sin(lat * Math.PI / 180.0)
-        var pxY = (0.5 - Math.log((1.0 + sinLat) / (1.0 - sinLat)) / (4.0 * Math.PI)) * worldSize
-        return height / 2.0 + (pxY - centerPxY)
+        return (LAMAX - lat) / (LAMAX - LAMIN) * height
     }
 
     /**
-     * @brief Returns true when the callsign matches the ICAO airline pattern (2–3 letters + digits).
+     * @brief Returns true when the callsign matches the ICAO airline pattern
+     * (2–3 uppercase letters followed by a digit).
      * @param callsign The aircraft callsign string.
      * @return True for airline flights, false for GA or unknown.
      */
@@ -164,9 +137,9 @@ Item {
     }
 
     /**
-     * @brief Returns the route string for an aircraft if origin and destination are known.
+     * @brief Returns the route string for an aircraft if both endpoints are known.
      * @param ac Aircraft object.
-     * @return "KDFW→KLAX" style string, or empty string if not available.
+     * @return "KDFW→KLAX" style string, or empty string if unavailable.
      */
     function aircraftRoute(ac) {
         if (ac.origin && ac.destination && ac.origin !== "" && ac.destination !== "")
@@ -174,124 +147,73 @@ Item {
         return ""
     }
 
-    // ── Tile model (7×7 grid, radius 3 in each direction) ────────
-
-    /**
-     * @brief Generates the 49-element tile grid model from the current centre tile.
-     * Each element carries the tile column, row, and screen offset from the tile origin.
-     * @return Array of {col, row, dx, dy} objects.
-     */
-    function buildTileModel() {
-        var tiles = []
-        for (var dy = -3; dy <= 3; dy++) {
-            for (var dx = -3; dx <= 3; dx++) {
-                tiles.push({ col: centerTileX + dx,
-                              row: centerTileY + dy,
-                              dx:  dx * 256,
-                              dy:  dy * 256 })
-            }
-        }
-        return tiles
-    }
-
-    property var tileModel: buildTileModel()
-
-    // Rebuild tile grid when map parameters change.
-    onCenterLatChanged: tileModel = buildTileModel()
-    onCenterLonChanged: tileModel = buildTileModel()
-    onMapZoomChanged:   tileModel = buildTileModel()
-
     // ── Layers ────────────────────────────────────────────────────
 
-    // Dark base — always visible, shows through tile-load failures.
+    // Dark base — shown during image load and behind transparent PNG edges.
     Rectangle {
         anchors.fill: parent
         color: PairionStyle.darkBg
     }
 
-    // FAA VFR Sectional chart tile layer.
-    Item {
-        id: tileLayer
+    // FAA VFR Sectional chart — pre-processed, dark-blue tinted, covers the bounding box exactly.
+    Image {
+        id: chartImage
         anchors.fill: parent
-        clip: true
-
-        Repeater {
-            model: root.tileModel
-
-            /**
-             * @brief Single map tile fetched from the FAA VFR sectional tile server.
-             * URL format: ArcGIS Online tile service — {z}/{y}/{x} ordering.
-             */
-            Image {
-                x: root.tileOriginX + modelData.dx
-                y: root.tileOriginY + modelData.dy
-                width: 256
-                height: 256
-                source: "https://tiles.arcgisonline.com/arcgis/rest/services/Specialty/FAA_Sectional_VFR/MapServer/tile/"
-                        + root.mapZoom + "/" + modelData.row + "/" + modelData.col
-                asynchronous: true
-                cache: true
-                // Tiles fade in to avoid jarring pop-in.
-                opacity: status === Image.Ready ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 300 } }
-            }
-        }
-
-        // Semi-transparent dark tint over the tiles for contrast with aircraft symbols.
-        Rectangle {
-            anchors.fill: parent
-            color: "#070c18"
-            opacity: 0.55
-        }
+        source:   "qrc:/resources/adsb/vfr_sectional.png"
+        fillMode: Image.Stretch
+        smooth:   true
+        // Fade in once loaded to avoid a jarring black flash.
+        opacity: status === Image.Ready ? 1.0 : 0.0
+        Behavior on opacity { NumberAnimation { duration: 400 } }
     }
 
-    // Range rings — always visible as background reference.
+    // Range rings — drawn at 2 nm, 4 nm, 8 nm from home at low opacity.
     Canvas {
         id: rings
         anchors.fill: parent
+        opacity: 0.25
 
         /**
-         * @brief Draws concentric range rings at 50 nm, 100 nm, and 200 nm.
-         * Ring radii are computed in world pixels and converted to screen pixels.
-         * 1 nm = 1/60 of a degree of latitude; Mercator scale is approximately
-         * constant near the map centre for the precision needed here.
+         * @brief Draws concentric range rings from the home location.
+         *
+         * Pixel radius is derived from the latitude scale:
+         *   pxPerNm = height / (LAMAX - LAMIN) / 60
+         * This gives slightly elliptical circles because longitude pixels differ,
+         * which is acceptable at this scale for range reference purposes.
          */
         onPaint: {
             var ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)
 
-            // Pixels per nautical mile at map centre (approx. — latitude-corrected).
-            var pxPerDeg = root.worldSize / 360.0
-            var pxPerNm  = pxPerDeg / 60.0
+            // Pixels per nautical mile in the Y direction.
+            var pxPerNm = height / (root.LAMAX - root.LAMIN) / 60.0
 
-            var cx = width  / 2.0
-            var cy = height / 2.0
+            var cx = root.lonToScreenX(root.HOME_LON)
+            var cy = root.latToScreenY(root.HOME_LAT)
 
-            ctx.strokeStyle = "#204060"
+            ctx.strokeStyle = "#00b4ff"
             ctx.lineWidth   = 1
             ctx.setLineDash([4, 6])
             ctx.font        = "9px 'Courier New'"
-            ctx.fillStyle   = "#3a6080"
+            ctx.fillStyle   = "#00b4ff"
             ctx.textAlign   = "left"
 
-            var rings = [
-                { nm: 50,  label: "50nm"  },
-                { nm: 100, label: "100nm" },
-                { nm: 200, label: "200nm" }
+            var ringSets = [
+                { nm: 2, label: "2nm"  },
+                { nm: 4, label: "4nm"  },
+                { nm: 8, label: "8nm"  }
             ]
 
-            for (var i = 0; i < rings.length; i++) {
-                var r = rings[i].nm * pxPerNm
+            for (var i = 0; i < ringSets.length; i++) {
+                var r = ringSets[i].nm * pxPerNm
                 ctx.beginPath()
                 ctx.arc(cx, cy, r, 0, 2 * Math.PI)
                 ctx.stroke()
-
-                // Label at the 12 o'clock position of each ring.
-                ctx.fillText(rings[i].label, cx + 4, cy - r + 12)
+                ctx.fillText(ringSets[i].label, cx + 4, cy - r + 12)
             }
 
-            // Centre crosshair.
-            ctx.strokeStyle = "#305070"
+            // Centre crosshair at home location.
+            ctx.strokeStyle = "#00b4ff"
             ctx.lineWidth   = 1
             ctx.setLineDash([2, 4])
             ctx.beginPath()
@@ -306,7 +228,7 @@ Item {
         onHeightChanged: requestPaint()
     }
 
-    // Aircraft icon layer — one Canvas drawn over all aircraft icons together.
+    // Aircraft icon layer — single Canvas redrawn on each data update.
     Canvas {
         id: iconCanvas
         anchors.fill: parent
@@ -316,9 +238,9 @@ Item {
         /**
          * @brief Redraws all aircraft icons whenever the aircraft list changes.
          *
-         * On-ground aircraft are drawn as 6×6 filled dots.
-         * Airborne aircraft are drawn as 20×20 arrow silhouettes rotated to heading.
-         * Colour: PairionStyle.gaColor for GA, PairionStyle.airlineColor for airline.
+         * On-ground aircraft are drawn as 6 px filled dots.
+         * Airborne aircraft are drawn as arrow silhouettes rotated to heading.
+         * Colour: PairionStyle.gaColor (cyan) for GA, PairionStyle.airlineColor (amber) for airline.
          */
         onPaint: {
             var ctx = getContext("2d")
@@ -355,12 +277,12 @@ Item {
                     ctx.translate(sx, sy)
                     ctx.rotate(heading)
 
-                    // Arrow: tip at (0, -10), base wings at (±6, +8), tail notch at (0, +4).
+                    // Arrow: tip at (0, -10), wings at (±6, +8), tail notch at (0, +4).
                     ctx.beginPath()
-                    ctx.moveTo(0, -10)       // tip
-                    ctx.lineTo(6,   8)        // right wing
-                    ctx.lineTo(0,   4)        // tail notch
-                    ctx.lineTo(-6,  8)        // left wing
+                    ctx.moveTo(0,  -10)
+                    ctx.lineTo(6,    8)
+                    ctx.lineTo(0,    4)
+                    ctx.lineTo(-6,   8)
                     ctx.closePath()
                     ctx.fill()
 
@@ -374,28 +296,28 @@ Item {
         onHeightChanged:   requestPaint()
     }
 
-    // Callout boxes — one Item per airborne aircraft with callsign data.
+    // Callout boxes — one Item per airborne aircraft.
     Repeater {
         model: root.aircraftList.filter(function(ac) { return !ac.onGround })
 
         /**
          * @brief Callout panel for one airborne aircraft.
          *
-         * Positioned 16 px right and 26 px above the icon centre. A thin connector
-         * line runs from the icon centre to the panel corner.
+         * Positioned 16 px right and above the icon centre. A thin connector
+         * line runs from the icon centre to the panel's bottom-left corner.
          */
         delegate: Item {
             id: calloutRoot
 
             required property var modelData
-            readonly property var  ac:      modelData
-            readonly property real iconX:   root.lonToScreenX(ac.lon)
-            readonly property real iconY:   root.latToScreenY(ac.lat)
-            readonly property real boxX:    iconX + 16
-            readonly property real boxY:    iconY - 26 - calloutBox.height
-            readonly property bool airline: root.isAirline(ac.callsign)
+            readonly property var  ac:       modelData
+            readonly property real iconX:    root.lonToScreenX(ac.lon)
+            readonly property real iconY:    root.latToScreenY(ac.lat)
+            readonly property real boxX:     iconX + 16
+            readonly property real boxY:     iconY - 26 - calloutBox.height
+            readonly property bool airline:  root.isAirline(ac.callsign)
             readonly property color acColor: airline ? PairionStyle.airlineColor : PairionStyle.gaColor
-            readonly property string route: root.aircraftRoute(ac)
+            readonly property string route:  root.aircraftRoute(ac)
 
             // Connector line from icon centre to callout box bottom-left corner.
             Canvas {
@@ -403,14 +325,14 @@ Item {
                 anchors.fill: parent
 
                 /**
-                 * @brief Draws a thin 1 px connector from the icon centre to the box corner.
+                 * @brief Draws a 1 px connector from the icon centre to the callout box.
                  */
                 onPaint: {
                     var ctx = getContext("2d")
                     ctx.clearRect(0, 0, width, height)
-                    ctx.strokeStyle = calloutRoot.acColor
-                    ctx.globalAlpha = 0.6
-                    ctx.lineWidth   = 1
+                    ctx.strokeStyle  = calloutRoot.acColor
+                    ctx.globalAlpha  = 0.6
+                    ctx.lineWidth    = 1
                     ctx.beginPath()
                     ctx.moveTo(calloutRoot.iconX, calloutRoot.iconY)
                     ctx.lineTo(calloutRoot.boxX, calloutRoot.boxY + calloutBox.height)
@@ -427,12 +349,12 @@ Item {
                 y: calloutRoot.boxY
                 width:  contentCol.implicitWidth  + 8
                 height: contentCol.implicitHeight + 6
-                color:           Qt.rgba(0.05, 0.09, 0.14, 0.85)
-                border.color:    calloutRoot.acColor
-                border.width:    1
-                radius:          2
-                visible:         calloutRoot.iconX > -50 && calloutRoot.iconX < root.width  + 50
-                              && calloutRoot.iconY > -50 && calloutRoot.iconY < root.height + 50
+                color:        Qt.rgba(0.05, 0.09, 0.14, 0.85)
+                border.color: calloutRoot.acColor
+                border.width: 1
+                radius:       2
+                visible:      calloutRoot.iconX > -50 && calloutRoot.iconX < root.width  + 50
+                           && calloutRoot.iconY > -50 && calloutRoot.iconY < root.height + 50
 
                 Column {
                     id: contentCol
