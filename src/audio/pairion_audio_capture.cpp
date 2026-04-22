@@ -69,6 +69,8 @@ void PairionAudioCapture::start() {
         }
 
         m_audioSource = new QAudioSource(selectedDevice, format, this);
+        connect(m_audioSource, &QAudioSource::stateChanged, this,
+                &PairionAudioCapture::onAudioSourceStateChanged);
         m_ioDevice = m_audioSource->start();
         if (m_ioDevice == nullptr) {
             emit captureError(QStringLiteral("Failed to start audio source"));
@@ -121,6 +123,22 @@ void PairionAudioCapture::onAudioDataReady() {
     m_accumulator.append(data);
     processAccumulator();
 }
+
+// LCOV_EXCL_START — requires real audio hardware; not exercisable in guiless unit tests
+void PairionAudioCapture::onAudioSourceStateChanged(QAudio::State state) {
+    if (!m_running) {
+        return; // Intentional stop — ignore.
+    }
+    if (state == QAudio::StoppedState && m_audioSource != nullptr
+        && m_audioSource->error() != QAudio::NoError) {
+        QString reason = QStringLiteral("Audio device stopped unexpectedly (error %1)")
+                             .arg(static_cast<int>(m_audioSource->error()));
+        qCCritical(lcCapture) << reason;
+        m_running = false;
+        emit captureError(reason);
+    }
+}
+// LCOV_EXCL_STOP
 
 void PairionAudioCapture::processAccumulator() {
     while (m_accumulator.size() >= kFrameBytes) {

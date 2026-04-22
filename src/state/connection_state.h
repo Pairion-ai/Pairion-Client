@@ -256,7 +256,7 @@ class ConnectionState : public QObject {
     double m_mapFocusLon = 0.0;
     QString m_mapFocusLabel;
     QString m_mapFocusZoom;
-    QString m_activeSceneId = QStringLiteral("globe");
+    QString m_activeSceneId = QStringLiteral("adsb-radar");
     QVariantMap m_sceneData;
     QVariantMap m_sceneParams;
     QString m_sceneTransition = QStringLiteral("crossfade");

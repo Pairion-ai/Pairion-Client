@@ -73,6 +73,27 @@ class AudioSessionOrchestrator : public QObject {
     void onInboundAudioStreamStart(const QString &streamId);
     void onInboundStreamEnd(const QString &streamId, const QString &reason);
     void onTtsPlaybackStarted();
+    /**
+     * @brief Resets the pipeline to Idle when the WebSocket connection is lost.
+     *
+     * Stops any in-progress stream and stops listening. Listening resumes via
+     * onWsReconnected() when the session is re-established.
+     */
+    void onWsDisconnected();
+    /**
+     * @brief Resumes listening after the WebSocket session is re-established.
+     * @param sessionId New session identifier (unused).
+     * @param serverVersion Server version string (unused).
+     */
+    void onWsReconnected(const QString &sessionId, const QString &serverVersion);
+    /**
+     * @brief Central error handler for all pipeline component failures.
+     *
+     * Logs the reason, stops any active stream, transitions to Idle, and emits
+     * pipelineError so the UI can surface the fault to the user.
+     * @param reason Human-readable error description.
+     */
+    void onPipelineError(const QString &reason);
 
   private:
     void transitionTo(State newState);

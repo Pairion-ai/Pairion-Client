@@ -7,7 +7,7 @@ Usage:
     python3 scripts/process_vfr_sectional.py
 
 The script downloads the current Dallas-Ft Worth FAA VFR Sectional chart ZIP, crops it
-to the Pairion ADS-B bounding box (8nm around home), applies a dark-blue HUD tint, and
+to the Pairion ADS-B bounding box (25nm around home), applies a dark-blue HUD tint, and
 saves the result to resources/adsb/vfr_sectional.png for embedding as a Qt resource.
 
 FAA charts update every 56 days. Re-run this script after each cycle to keep the chart
@@ -18,8 +18,8 @@ Dependencies:
     pip3 install rasterio pillow
 
 Bounding box (application.yml pairion.data.adsb):
-    lamin: 33.681   lomin: -96.715
-    lamax: 33.947   lomax: -96.449
+    lamin: 33.398   lomin: -97.084
+    lamax: 34.231   lomax: -96.080
 """
 
 import os
@@ -40,8 +40,8 @@ FAA_ZIP_URL  = "https://aeronav.faa.gov/visual/03-19-2026/sectional-files/Dallas
 TIF_NAME     = "Dallas-Ft Worth SEC.tif"
 
 # ADS-B bounding box — must match application.yml pairion.data.adsb
-LOMIN, LAMIN = -96.715, 33.681   # west, south
-LOMAX, LAMAX =  -96.449, 33.947  # east, north
+LOMIN, LAMIN = -97.084, 33.398   # west, south
+LOMAX, LAMAX = -96.080, 34.231   # east, north
 
 OUTPUT_PATH  = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

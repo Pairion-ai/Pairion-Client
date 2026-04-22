@@ -71,6 +71,14 @@ class PairionAudioCapture : public QObject {
 
   private slots:
     void onAudioDataReady();
+    /**
+     * @brief Reacts to QAudioSource state transitions during active capture.
+     *
+     * Emits captureError if the device unexpectedly stops with a non-zero error code.
+     * No-ops during intentional stop (m_running is false by that point).
+     * @param state New QAudioSource state.
+     */
+    void onAudioSourceStateChanged(QAudio::State state);
 
   private:
     void processAccumulator();

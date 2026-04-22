@@ -52,6 +52,18 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
             &AudioSessionOrchestrator::onInboundAudioStreamStart);
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::audioStreamEndOutReceived, this,
             &AudioSessionOrchestrator::onInboundStreamEnd);
+
+    // Fix 1 & 2: Reset on disconnect; resume on reconnect.
+    connect(m_wsClient, &pairion::ws::PairionWebSocketClient::disconnected, this,
+            &AudioSessionOrchestrator::onWsDisconnected);
+    connect(m_wsClient, &pairion::ws::PairionWebSocketClient::sessionOpened, this,
+            &AudioSessionOrchestrator::onWsReconnected);
+
+    // Fix 3: Propagate capture and encoder failures to the central error handler.
+    connect(m_capture, &pairion::audio::PairionAudioCapture::captureError, this,
+            &AudioSessionOrchestrator::onPipelineError);
+    connect(m_encoder, &pairion::audio::PairionOpusEncoder::encoderError, this,
+            &AudioSessionOrchestrator::onPipelineError);
 }
 
 AudioSessionOrchestrator::State AudioSessionOrchestrator::state() const {
@@ -74,6 +86,13 @@ void AudioSessionOrchestrator::shutdown() {
 
 void AudioSessionOrchestrator::onWakeWordDetected(float score, const QByteArray &preRollBuffer) {
     if (m_state != State::AwaitingWake) {
+        return;
+    }
+    // Fix 2: Guard against acting on a wake event when the socket is not ready.
+    // Without this, the orchestrator would enter Streaming state and loop on 30 s
+    // timeouts until the connection is restored.
+    if (!m_wsClient->isConnected()) {
+        qCWarning(lcPipeline) << "Wake word detected but WebSocket not connected — ignoring";
         return;
     }
 
@@ -205,6 +224,34 @@ void AudioSessionOrchestrator::onInboundStreamEnd(const QString &streamId, const
     qCInfo(lcPipeline) << "Inbound audio stream ended:" << streamId << "reason:" << reason;
     if (m_playback)
         m_playback->handleStreamEnd(reason);
+}
+
+// Fix 1: WebSocket disconnection handler.
+void AudioSessionOrchestrator::onWsDisconnected() {
+    qCWarning(lcPipeline) << "WebSocket disconnected — resetting pipeline to Idle";
+    m_streamingTimeout.stop();
+    m_activeStreamId.clear();
+    transitionTo(State::Idle);
+    // Do NOT call startListening() here. onWsReconnected() will resume listening
+    // once a new session is confirmed, preventing the 30 s timeout stall loop.
+}
+
+// Fix 1: Resume listening once a new session is established.
+void AudioSessionOrchestrator::onWsReconnected(const QString &sessionId,
+                                               const QString &serverVersion) {
+    Q_UNUSED(sessionId)
+    Q_UNUSED(serverVersion)
+    qCInfo(lcPipeline) << "WebSocket reconnected — resuming wake word listening";
+    startListening();
+}
+
+// Fix 3: Central handler for capture and encoder error signals.
+void AudioSessionOrchestrator::onPipelineError(const QString &reason) {
+    qCCritical(lcPipeline) << "Pipeline component error:" << reason;
+    m_streamingTimeout.stop();
+    m_activeStreamId.clear();
+    transitionTo(State::Idle);
+    emit pipelineError(reason);
 }
 
 } // namespace pairion::pipeline

@@ -97,6 +97,32 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
     inferenceThread->start();
     encoderThread->start();
 
+    // Fix 5: Detect worker thread crashes — log critical and surface to the UI.
+    QObject::connect(inferenceThread, &QThread::finished, app, [connState]() {
+        qCritical() << "InferenceThread exited unexpectedly — wake word and VAD offline";
+        connState->appendLog(
+            QStringLiteral("[CRITICAL] Inference thread exited — microphone pipeline offline. "
+                           "Restart the application."));
+    });
+    QObject::connect(encoderThread, &QThread::finished, app, [connState]() {
+        qCritical() << "EncoderThread exited unexpectedly — audio encoding offline";
+        connState->appendLog(
+            QStringLiteral("[CRITICAL] Encoder thread exited — microphone pipeline offline. "
+                           "Restart the application."));
+    });
+
+    // Fix 3: Surface pipeline errors and capture errors to the UI log.
+    QObject::connect(orchestrator, &pairion::pipeline::AudioSessionOrchestrator::pipelineError, app,
+                     [connState](const QString &reason) {
+                         connState->appendLog(
+                             QStringLiteral("[ERROR] Pipeline: %1").arg(reason));
+                     });
+    QObject::connect(capture, &pairion::audio::PairionAudioCapture::captureError, app,
+                     [connState](const QString &reason) {
+                         connState->appendLog(
+                             QStringLiteral("[ERROR] Microphone: %1").arg(reason));
+                     });
+
     // Warm up the wake detector on the inference thread (not main thread)
     QMetaObject::invokeMethod(wakeDetector, "warmup", Qt::QueuedConnection);
 
