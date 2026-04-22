@@ -85,7 +85,18 @@ Item {
      */
     readonly property var aircraftList: {
         var raw = sceneData["adsb"]
-        return (raw && typeof raw.length === "number" && raw.length > 0) ? raw : []
+        if (!raw || typeof raw.length !== "number" || raw.length === 0) return []
+        // Deduplicate by icao24 — OpenSky occasionally returns duplicate state vectors.
+        var seen = {}
+        var out  = []
+        for (var i = 0; i < raw.length; i++) {
+            var ac = raw[i]
+            if (ac && ac.icao24 && !seen[ac.icao24]) {
+                seen[ac.icao24] = true
+                out.push(ac)
+            }
+        }
+        return out
     }
 
     // ── Animation state ───────────────────────────────────────────
@@ -312,7 +323,9 @@ Item {
      * @return Formatted string, e.g. "B738  480kt  35000ft".
      */
     function aircraftSummary(ac) {
-        var type  = (ac.aircraftType && ac.aircraftType !== "") ? ac.aircraftType : "----"
+        var type  = (ac.aircraftType && ac.aircraftType !== "")
+                    ? ac.aircraftType
+                    : aircraftDisplayCategory(ac)
         var speed = ac.speedKnots ? Math.round(ac.speedKnots) + "kt" : "---"
         var alt   = ac.altitudeFt ? Math.round(ac.altitudeFt / 100) * 100 + "ft" : "---"
         return type + "  " + speed + "  " + alt
@@ -357,87 +370,34 @@ Item {
     }
 
     /**
-     * @brief Draws a top-down aircraft silhouette centered at (0,0) pointing up
-     * (+Y = tail, −Y = nose). The caller must ctx.save/translate/rotate/restore.
-     *
-     * All shapes share the same parametric outline: fuselage + swept wings +
-     * tail fins. Sweep angle and overall scale distinguish the categories.
-     * Turboprop and piston add a prop disk; helicopters draw a rotor arc.
-     *
-     * @param ctx  Canvas 2D context.
+     * @brief Returns the QRC path for the aircraft icon image corresponding to
+     * the given category. Helicopters fall back to the piston icon since no
+     * dedicated helicopter silhouette is bundled.
      * @param category One of the strings returned by aircraftCategory().
+     * @return QRC resource path string.
      */
-    function drawAircraftIcon(ctx, category) {
-        // Per-category parameters: [scale, wingSweep, propRadius, isRotor]
-        // scale:     overall size multiplier
-        // wingSweep: trailing-edge offset per unit half-span (higher = more sweep)
-        // propR:     prop disk radius (0 = no prop)
-        // rotor:     draw helicopter rotor disk
-        var s = 1.0, sweep = 0.38, propR = 0, rotor = false
-        switch (category) {
-            case "heavy":    s = 1.55; sweep = 0.45; break
-            case "narrow":   s = 1.20; sweep = 0.40; break
-            case "regional": s = 0.95; sweep = 0.32; break
-            case "bizjet":   s = 0.85; sweep = 0.58; break
-            case "turboprop":s = 0.95; sweep = 0.10; propR = 3.5; break
-            case "piston":   s = 0.72; sweep = 0.05; propR = 2.8; break
-            case "helicopter":s= 0.80; sweep = 0.00; rotor = true; break
-            default:         s = 1.00; sweep = 0.38; break
+    /**
+     * @brief Returns the display category for an aircraft, with a smarter fallback
+     * when the type code is unknown. Airlines default to "narrow" (most common jet
+     * type) rather than "unknown" (military silhouette).
+     * @param ac Full aircraft object.
+     * @return Category string for icon and classification.
+     */
+    function aircraftDisplayCategory(ac) {
+        var cat = aircraftCategory(ac.aircraftType)
+        if (cat === "unknown") {
+            // Airlines with no type code are almost certainly narrow/regional jets.
+            if (isAirline(ac.callsign)) return "narrow"
+            // All other unidentified aircraft: use piston silhouette as neutral fallback.
+            // Never show the "unknown" (military) icon for civil traffic.
+            return "piston"
         }
+        return cat
+    }
 
-        // Derived geometry (all in pixels, scaled)
-        var fw  = 1.8  * s   // fuselage half-width
-        var fn  = 11.0 * s   // nose extent above center
-        var ft  = 9.0  * s   // tail extent below center
-        var hw  = 10.0 * s   // wing half-span
-        var tHw = hw * 0.38  // tail fin half-span
-        var tY  = ft - 2.5 * s  // tail fin Y position
-
-        // Single-path silhouette (right half then mirrored left half)
-        ctx.beginPath()
-        ctx.moveTo(0,          -fn)                          // nose tip
-        ctx.lineTo(fw * 0.8,   -fn + fw * 1.2)              // nose shoulder R
-        ctx.lineTo(fw,         -fw * 0.5)                    // R fuselage at wing root
-        ctx.lineTo(hw,          hw * sweep)                  // R wingtip leading
-        ctx.lineTo(hw * 0.86,   hw * sweep + fw * 2.4)      // R wingtip trailing
-        ctx.lineTo(fw,          fw * 3.0)                    // R wing root trailing
-        ctx.lineTo(fw * 0.78,   tY)                          // R fuselage at tail
-        ctx.lineTo(tHw,         tY + tHw * 0.42)            // R tail tip leading
-        ctx.lineTo(tHw * 0.78,  tY + tHw * 0.60)            // R tail tip trailing
-        ctx.lineTo(fw * 0.50,   tY + fw * 0.9)              // R tail root back
-        ctx.lineTo(0,           ft)                          // tail tip center
-        ctx.lineTo(-fw * 0.50,  tY + fw * 0.9)
-        ctx.lineTo(-tHw * 0.78, tY + tHw * 0.60)
-        ctx.lineTo(-tHw,        tY + tHw * 0.42)
-        ctx.lineTo(-fw * 0.78,  tY)
-        ctx.lineTo(-fw,         fw * 3.0)
-        ctx.lineTo(-hw * 0.86,  hw * sweep + fw * 2.4)
-        ctx.lineTo(-hw,         hw * sweep)
-        ctx.lineTo(-fw,        -fw * 0.5)
-        ctx.lineTo(-fw * 0.8,  -fn + fw * 1.2)
-        ctx.closePath()
-        ctx.fill()
-
-        // Prop disk (turboprop / piston): outline circle in front of nose
-        if (propR > 0) {
-            ctx.beginPath()
-            ctx.arc(0, -fn - propR * 0.35, propR, 0, 2 * Math.PI)
-            ctx.lineWidth = 1.2
-            ctx.stroke()
-        }
-
-        // Helicopter rotor: two crossed blades
-        if (rotor) {
-            var rr = hw * 1.5
-            ctx.save()
-            ctx.globalAlpha = 0.65
-            ctx.lineWidth = 1.5
-            ctx.beginPath()
-            ctx.moveTo(-rr, 0); ctx.lineTo(rr, 0)
-            ctx.moveTo(0, -rr); ctx.lineTo(0, rr)
-            ctx.stroke()
-            ctx.restore()
-        }
+    function aircraftIconPath(category) {
+        var c = (category === "helicopter") ? "piston" : category
+        return "qrc:/resources/adsb/icons/" + c + ".png"
     }
 
     // ── Layers ────────────────────────────────────────────────────
@@ -521,64 +481,52 @@ Item {
         onHeightChanged: requestPaint()
     }
 
-    // Aircraft icon layer — redrawn at 30 fps via animatedList.
-    Canvas {
-        id: iconCanvas
-        anchors.fill: parent
-
-        property var aircraft: root.animatedList
+    // Aircraft icon layer — one Image (or dot) per aircraft, animated via animatedByIcao.
+    Repeater {
+        model: root.aircraftList
 
         /**
-         * @brief Redraws all aircraft icons from the interpolated animatedList.
+         * @brief Icon delegate for one aircraft.
          *
-         * On-ground aircraft are drawn as 6 px filled dots.
-         * Airborne aircraft are drawn as arrow silhouettes rotated to heading.
-         * Colour: PairionStyle.gaColor (cyan) for GA, PairionStyle.airlineColor (amber) for airline.
+         * Position is driven by animatedByIcao so icons glide smoothly at 30 fps
+         * without recreating delegates (model only changes every 10 s poll).
+         * Airborne aircraft use the category PNG icon rotated to heading.
+         * On-ground aircraft are rendered as a 6 px filled dot.
          */
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
+        delegate: Item {
+            id: iconRoot
 
-            var list = aircraft
-            if (!list || !list.length) return
+            required property var modelData
+            readonly property var  ac:      modelData
+            readonly property var  animPos: root.animatedByIcao[ac.icao24] || ac
+            readonly property real sx:      root.lonToScreenX(animPos.lon)
+            readonly property real sy:      root.latToScreenY(animPos.lat)
+            readonly property bool inView:  sx > -40 && sx < root.width  + 40
+                                         && sy > -40 && sy < root.height + 40
 
-            for (var i = 0; i < list.length; i++) {
-                var ac  = list[i]
-                var sx  = root.lonToScreenX(ac.lon)
-                var sy  = root.latToScreenY(ac.lat)
+            // Airborne: PNG silhouette rotated to heading.
+            Image {
+                visible:  !ac.onGround && iconRoot.inView
+                source:   root.aircraftIconPath(root.aircraftDisplayCategory(ac))
+                width:    36
+                height:   36
+                fillMode: Image.PreserveAspectFit
+                smooth:   true
+                mipmap:   true
+                x:        iconRoot.sx - width  / 2
+                y:        iconRoot.sy - height / 2
+                rotation: iconRoot.animPos.trackDeg || 0
+            }
 
-                // Skip aircraft outside the visible viewport with a small margin.
-                if (sx < -30 || sx > width + 30 || sy < -30 || sy > height + 30)
-                    continue
-
-                var airline = root.isAirline(ac.callsign)
-                var color   = airline ? PairionStyle.airlineColor : PairionStyle.gaColor
-
-                ctx.fillStyle   = color
-                ctx.strokeStyle = color
-
-                if (ac.onGround) {
-                    // On-ground: small filled dot.
-                    ctx.beginPath()
-                    ctx.arc(sx, sy, 3, 0, 2 * Math.PI)
-                    ctx.fill()
-                } else {
-                    // Airborne: shaped silhouette rotated to heading (trackDeg, 0 = north).
-                    var heading  = (ac.trackDeg || 0) * Math.PI / 180.0
-                    var category = root.aircraftCategory(ac.aircraftType)
-
-                    ctx.save()
-                    ctx.translate(sx, sy)
-                    ctx.rotate(heading)
-                    root.drawAircraftIcon(ctx, category)
-                    ctx.restore()
-                }
+            // On-ground: small filled dot.
+            Rectangle {
+                visible: ac.onGround && iconRoot.inView
+                width:   6; height: 6; radius: 3
+                color:   root.isAirline(ac.callsign) ? PairionStyle.airlineColor : PairionStyle.gaColor
+                x:       iconRoot.sx - 3
+                y:       iconRoot.sy - 3
             }
         }
-
-        onAircraftChanged: requestPaint()
-        onWidthChanged:    requestPaint()
-        onHeightChanged:   requestPaint()
     }
 
     // Callout boxes — one Item per airborne aircraft, bound to aircraftList (10 s snap).
@@ -696,6 +644,13 @@ Item {
                 }
             }
         }
+    }
+
+    // DEBUG count overlay — remove after verifying deduplication
+    Text {
+        z: 999; x: 10; y: height - 80
+        text: "raw:" + (sceneData["adsb"] ? sceneData["adsb"].length : 0) + " deduped:" + root.aircraftList.length
+        color: "#ff6600"; font.pixelSize: 10; font.family: "Courier New"
     }
 
     // No-data overlay — shown when aircraft list is empty.

@@ -25,5 +25,12 @@
         <file>resources/maps/world_map_night.jpg</file>
         <file>resources/model_manifest.json</file>
         <file>resources/adsb/vfr_sectional.png</file>
+        <file>resources/adsb/icons/heavy.png</file>
+        <file>resources/adsb/icons/narrow.png</file>
+        <file>resources/adsb/icons/regional.png</file>
+        <file>resources/adsb/icons/bizjet.png</file>
+        <file>resources/adsb/icons/turboprop.png</file>
+        <file>resources/adsb/icons/piston.png</file>
+        <file>resources/adsb/icons/unknown.png</file>
     </qresource>
 </RCC>
