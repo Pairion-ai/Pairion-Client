@@ -9,8 +9,8 @@
  *
  * Coordinate mapping is a simple linear projection — no Mercator math required because
  * the image already spans the exact same bounding box as the aircraft data:
- *   screenX = (lon - LOMIN) / (LOMAX - LOMIN) * width
- *   screenY = (LAMAX - lat) / (LAMAX - LAMIN) * height
+ *   screenX = (lon - lomin) / (lomax - lomin) * width
+ *   screenY = (lamax - lat) / (lamax - lamin) * height
  *
  * Aircraft rendering:
  *   - Airborne GA aircraft: arrow silhouette (cyan) rotated to heading.
@@ -54,18 +54,18 @@ Item {
     // ── Bounding box constants (must match application.yml pairion.data.adsb) ──
 
     /** @brief Southern boundary of the ADS-B coverage area (degrees). */
-    readonly property real LAMIN:  33.681
+    readonly property real lamin:  33.681
     /** @brief Western boundary of the ADS-B coverage area (degrees). */
-    readonly property real LOMIN: -96.715
+    readonly property real lomin: -96.715
     /** @brief Northern boundary of the ADS-B coverage area (degrees). */
-    readonly property real LAMAX:  33.947
+    readonly property real lamax:  33.947
     /** @brief Eastern boundary of the ADS-B coverage area (degrees). */
-    readonly property real LOMAX: -96.449
+    readonly property real lomax: -96.449
 
     /** @brief Home location latitude — centre of range rings. */
-    readonly property real HOME_LAT: 33.814427
+    readonly property real homeLat: 33.814427
     /** @brief Home location longitude — centre of range rings. */
-    readonly property real HOME_LON: -96.582106
+    readonly property real homeLon: -96.582106
 
     // ── Aircraft data ─────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ Item {
      * @return Screen X in pixels.
      */
     function lonToScreenX(lon) {
-        return (lon - LOMIN) / (LOMAX - LOMIN) * width
+        return (lon - lomin) / (lomax - lomin) * width
     }
 
     /**
@@ -100,7 +100,7 @@ Item {
      * @return Screen Y in pixels.
      */
     function latToScreenY(lat) {
-        return (LAMAX - lat) / (LAMAX - LAMIN) * height
+        return (lamax - lat) / (lamax - lamin) * height
     }
 
     /**
@@ -177,7 +177,7 @@ Item {
          * @brief Draws concentric range rings from the home location.
          *
          * Pixel radius is derived from the latitude scale:
-         *   pxPerNm = height / (LAMAX - LAMIN) / 60
+         *   pxPerNm = height / (lamax - lamin) / 60
          * This gives slightly elliptical circles because longitude pixels differ,
          * which is acceptable at this scale for range reference purposes.
          */
@@ -186,10 +186,10 @@ Item {
             ctx.clearRect(0, 0, width, height)
 
             // Pixels per nautical mile in the Y direction.
-            var pxPerNm = height / (root.LAMAX - root.LAMIN) / 60.0
+            var pxPerNm = height / (root.lamax - root.lamin) / 60.0
 
-            var cx = root.lonToScreenX(root.HOME_LON)
-            var cy = root.latToScreenY(root.HOME_LAT)
+            var cx = root.lonToScreenX(root.homeLon)
+            var cy = root.latToScreenY(root.homeLat)
 
             ctx.strokeStyle = "#00b4ff"
             ctx.lineWidth   = 1
