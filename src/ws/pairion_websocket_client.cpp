@@ -163,7 +163,7 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
                 m_connState->setActiveSceneId(m.sceneId);
             } else if constexpr (std::is_same_v<T, protocol::SceneDataPush>) {
                 qCInfo(lcWs) << "Scene data push: modelId=" << m.modelId;
-                m_connState->setSceneData(m.modelId, m.data.toVariantMap());
+                m_connState->setSceneData(m.modelId, m.data.toVariant());
             } else if constexpr (std::is_same_v<T, protocol::SceneClear>) {
                 qCInfo(lcWs) << "Scene clear";
                 m_connState->clearSceneData();

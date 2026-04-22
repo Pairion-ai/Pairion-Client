@@ -188,10 +188,15 @@ class ConnectionState : public QObject {
     void setActiveSceneId(const QString &sceneId);
     /**
      * @brief Accumulate model data for the given modelId, emitting sceneDataChanged.
-     * @param modelId Key identifying the data model (e.g. "news").
-     * @param data Variant map payload pushed by the server.
+     *
+     * Accepts a QVariant so that both JSON-object payloads (QVariantMap) and
+     * JSON-array payloads (QVariantList) are stored correctly. The ADS-B scene,
+     * for example, pushes its aircraft list as a JSON array.
+     *
+     * @param modelId Key identifying the data model (e.g. "adsb", "news").
+     * @param data Variant payload pushed by the server (QVariantMap or QVariantList).
      */
-    void setSceneData(const QString &modelId, const QVariantMap &data);
+    void setSceneData(const QString &modelId, const QVariant &data);
     /// @brief Clear all accumulated scene data and emit sceneDataChanged.
     void clearSceneData();
     /**

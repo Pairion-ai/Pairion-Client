@@ -121,12 +121,18 @@ Item {
     // ── Private helpers ───────────────────────────────────────────
 
     /**
-     * @brief Capitalises the first character of a string.
-     * @param s Input string (e.g. "globe").
-     * @return Capitalised string (e.g. "Globe").
+     * @brief Converts a hyphenated scene ID to PascalCase for the QML filename.
+     *
+     * Each hyphen-delimited segment is capitalised and joined without separators,
+     * so "adsb-radar" becomes "AdsbRadar" and "globe" becomes "Globe".
+     *
+     * @param s Input scene identifier (e.g. "globe", "adsb-radar").
+     * @return PascalCase string (e.g. "Globe", "AdsbRadar").
      */
-    function _capitalizeFirst(s) {
-        return s.charAt(0).toUpperCase() + s.slice(1)
+    function _toPascalCase(s) {
+        return s.split("-").map(function(part) {
+            return part.charAt(0).toUpperCase() + part.slice(1)
+        }).join("")
     }
 
     /**
@@ -136,7 +142,7 @@ Item {
      */
     function _loadScene(sceneId, transition) {
         var url = "qrc:/qml/Scenes/" + sceneId + "/"
-                + _capitalizeFirst(sceneId) + "Scene.qml"
+                + _toPascalCase(sceneId) + "Scene.qml"
 
         var comp = Qt.createComponent(url)
         if (comp.status === Component.Error) {

@@ -6,6 +6,7 @@
 #include "../src/protocol/envelope_codec.h"
 #include "../src/protocol/messages.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTest>
@@ -371,7 +372,7 @@ class TestMessageCodec : public QObject {
                  QStringLiteral("dallas"));
     }
 
-    /// Verify SceneDataPush deserializes modelId and data correctly.
+    /// Verify SceneDataPush deserializes modelId and object data correctly.
     void deserializeSceneDataPush() {
         QJsonObject data;
         data["headline"] = QStringLiteral("Market Volatility");
@@ -387,6 +388,31 @@ class TestMessageCodec : public QObject {
         QCOMPARE(msg->modelId, QStringLiteral("news"));
         QCOMPARE(msg->data[QStringLiteral("headline")].toString(),
                  QStringLiteral("Market Volatility"));
+    }
+
+    /// Verify SceneDataPush preserves a JSON array payload (e.g. ADS-B aircraft list).
+    void deserializeSceneDataPushWithArray() {
+        QJsonObject aircraft;
+        aircraft["icao24"]   = QStringLiteral("abc123");
+        aircraft["callsign"] = QStringLiteral("UAL123");
+        QJsonArray array;
+        array.append(aircraft);
+
+        QJsonObject obj;
+        obj["type"]    = QStringLiteral("SceneDataPush");
+        obj["modelId"] = QStringLiteral("adsb");
+        obj["data"]    = array;
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<SceneDataPush>(&result.value());
+        QVERIFY(msg != nullptr);
+        QCOMPARE(msg->modelId, QStringLiteral("adsb"));
+        QVERIFY(msg->data.isArray());
+        QJsonArray stored = msg->data.toArray();
+        QCOMPARE(stored.size(), 1);
+        QCOMPARE(stored[0].toObject()[QStringLiteral("icao24")].toString(),
+                 QStringLiteral("abc123"));
     }
 
     /// Verify SceneClear deserializes.

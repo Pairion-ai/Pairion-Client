@@ -19,6 +19,8 @@
         <file>qml/Scenes/globe/GlobeScene.qml</file>
         <file>qml/Scenes/dashboard/DashboardScene.qml</file>
         <file>qml/Scenes/space/SpaceScene.qml</file>
+        <file>qml/Scenes/adsb-radar/AdsbRadarScene.qml</file>
+        <file>qml/Scenes/adsb-radar/scene.yaml</file>
         <file>resources/maps/world_map_day.jpg</file>
         <file>resources/maps/world_map_night.jpg</file>
         <file>resources/model_manifest.json</file>

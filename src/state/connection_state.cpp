@@ -196,7 +196,7 @@ void ConnectionState::setActiveSceneId(const QString &sceneId) {
     }
 }
 
-void ConnectionState::setSceneData(const QString &modelId, const QVariantMap &data) {
+void ConnectionState::setSceneData(const QString &modelId, const QVariant &data) {
     m_sceneData[modelId] = data;
     emit sceneDataChanged();
 }

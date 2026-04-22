@@ -125,7 +125,7 @@ std::optional<InboundMessage> EnvelopeCodec::deserialize(const QJsonObject &obj)
     }
     if (type == QLatin1String("SceneDataPush")) {
         return SceneDataPush{obj[QStringLiteral("modelId")].toString(),
-                             obj[QStringLiteral("data")].toObject()};
+                             obj[QStringLiteral("data")]};
     }
     if (type == QLatin1String("SceneClear")) {
         return SceneClear{};

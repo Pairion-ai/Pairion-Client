@@ -11,6 +11,7 @@
 
 #include <optional>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <variant>
 
@@ -246,11 +247,13 @@ struct SceneChange {
  *
  * The \p data payload is accumulated in ConnectionState::sceneData keyed by \p modelId,
  * allowing the active scene to bind to live server-pushed content.
+ * The \p data field is a QJsonValue so it can carry either a JSON object or a JSON
+ * array (e.g. the ADS-B aircraft list) without losing the array structure.
  */
 struct SceneDataPush {
     static constexpr const char *kType = "SceneDataPush";
     QString modelId;
-    QJsonObject data;
+    QJsonValue data;
 };
 
 /**

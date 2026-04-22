@@ -142,14 +142,14 @@ class TestConnectionState : public QObject {
         QVERIFY(cs.sceneData().isEmpty());
     }
 
-    /// setSceneData stores data under the given modelId and emits sceneDataChanged.
+    /// setSceneData stores a QVariantMap payload under the given modelId and emits sceneDataChanged.
     void sceneDataSetAndGet() {
         ConnectionState cs;
         QSignalSpy spy(&cs, &ConnectionState::sceneDataChanged);
 
         QVariantMap data;
         data[QStringLiteral("headline")] = QStringLiteral("Market Volatility");
-        cs.setSceneData(QStringLiteral("news"), data);
+        cs.setSceneData(QStringLiteral("news"), QVariant(data));
 
         QCOMPARE(spy.count(), 1);
         QVERIFY(cs.sceneData().contains(QStringLiteral("news")));
@@ -158,13 +158,34 @@ class TestConnectionState : public QObject {
                  QStringLiteral("Market Volatility"));
     }
 
+    /// setSceneData stores a QVariantList (JSON array) payload — required by ADS-B scene.
+    void sceneDataSetAndGetList() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::sceneDataChanged);
+
+        QVariantMap ac1;
+        ac1[QStringLiteral("icao24")]   = QStringLiteral("abc123");
+        ac1[QStringLiteral("callsign")] = QStringLiteral("UAL123");
+        QVariantList list;
+        list.append(ac1);
+
+        cs.setSceneData(QStringLiteral("adsb"), QVariant(list));
+
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(cs.sceneData().contains(QStringLiteral("adsb")));
+        QVariantList stored = cs.sceneData()[QStringLiteral("adsb")].toList();
+        QCOMPARE(stored.size(), 1);
+        QCOMPARE(stored[0].toMap()[QStringLiteral("icao24")].toString(),
+                 QStringLiteral("abc123"));
+    }
+
     /// setSceneData accumulates multiple model IDs.
     void sceneDataAccumulates() {
         ConnectionState cs;
         QVariantMap d1; d1[QStringLiteral("x")] = 1;
         QVariantMap d2; d2[QStringLiteral("y")] = 2;
-        cs.setSceneData(QStringLiteral("modelA"), d1);
-        cs.setSceneData(QStringLiteral("modelB"), d2);
+        cs.setSceneData(QStringLiteral("modelA"), QVariant(d1));
+        cs.setSceneData(QStringLiteral("modelB"), QVariant(d2));
         QCOMPARE(cs.sceneData().size(), 2);
     }
 

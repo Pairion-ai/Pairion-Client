@@ -19,6 +19,12 @@ QtObject {
     readonly property color darkBg:      "#070c18"
     readonly property color borderColor: "#00b4ff"
 
+    // ── ADS-B radar aircraft colours ─────────────────────────────
+    /** Colour for general aviation (GA) aircraft icons. */
+    readonly property color gaColor:      "#00b4ff"
+    /** Colour for airline/commercial aircraft icons. */
+    readonly property color airlineColor: "#ff8800"
+
     // ── Typography ────────────────────────────────────────────────
     readonly property string fontFamily: "Courier New"
     readonly property int    fontSizeXs:  9
