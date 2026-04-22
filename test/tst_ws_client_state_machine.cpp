@@ -398,8 +398,8 @@ class TestWsClientStateMachine : public QObject {
         client.disconnectFromServer();
     }
 
-    /// Verify SceneChange updates activeSceneId, sceneParams, and sceneTransition.
-    void sceneChangeUpdatesConnectionState() {
+    /// Verify MapFocus message updates ConnectionState map focus properties.
+    void mapFocusUpdatesConnectionState() {
         MockServer server;
         server.setMessageHandler([](const QString &msg, QWebSocket *client) {
             QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
@@ -407,34 +407,175 @@ class TestWsClientStateMachine : public QObject {
                     QLatin1String("DeviceIdentify")) {
                 QJsonObject opened;
                 opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
-                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-sc");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-mf");
                 opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
                 client->sendTextMessage(
                     QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
 
-                QJsonObject params;
-                params[QStringLiteral("focus")] = QStringLiteral("dallas");
-                QJsonObject sc;
-                sc[QStringLiteral("type")]       = QStringLiteral("SceneChange");
-                sc[QStringLiteral("sceneId")]    = QStringLiteral("space");
-                sc[QStringLiteral("params")]     = params;
-                sc[QStringLiteral("transition")] = QStringLiteral("instant");
+                QJsonObject focus;
+                focus[QStringLiteral("type")]  = QStringLiteral("MapFocus");
+                focus[QStringLiteral("lat")]   = 35.6762;
+                focus[QStringLiteral("lon")]   = 139.6503;
+                focus[QStringLiteral("label")] = QStringLiteral("Tokyo, Japan");
+                focus[QStringLiteral("zoom")]  = QStringLiteral("city");
                 client->sendTextMessage(
-                    QString::fromUtf8(QJsonDocument(sc).toJson(QJsonDocument::Compact)));
+                    QString::fromUtf8(QJsonDocument(focus).toJson(QJsonDocument::Compact)));
             }
         });
 
         ConnectionState connState;
         PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
                                       &connState);
-        QSignalSpy sceneSpy(&connState, &ConnectionState::activeSceneIdChanged);
+        QSignalSpy focusSpy(&connState, &ConnectionState::mapFocusChanged);
         client.connectToServer();
 
-        QVERIFY(sceneSpy.wait(5000));
-        QCOMPARE(connState.activeSceneId(), QStringLiteral("space"));
+        QVERIFY(focusSpy.wait(5000));
+        QCOMPARE(connState.mapFocusActive(), true);
+        QCOMPARE(connState.mapFocusLat(), 35.6762);
+        QCOMPARE(connState.mapFocusLon(), 139.6503);
+        QCOMPARE(connState.mapFocusLabel(), QStringLiteral("Tokyo, Japan"));
+        QCOMPARE(connState.mapFocusZoom(), QStringLiteral("city"));
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify MapClear message deactivates map focus.
+    void mapClearDeactivatesFocus() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()[QStringLiteral("type")].toString() ==
+                    QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-mc");
+                opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                // First focus, then clear.
+                QJsonObject focus;
+                focus[QStringLiteral("type")]  = QStringLiteral("MapFocus");
+                focus[QStringLiteral("lat")]   = 35.6762;
+                focus[QStringLiteral("lon")]   = 139.6503;
+                focus[QStringLiteral("label")] = QStringLiteral("Tokyo");
+                focus[QStringLiteral("zoom")]  = QStringLiteral("city");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(focus).toJson(QJsonDocument::Compact)));
+
+                QJsonObject clr;
+                clr[QStringLiteral("type")] = QStringLiteral("MapClear");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(clr).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy focusSpy(&connState, &ConnectionState::mapFocusChanged);
+        client.connectToServer();
+
+        // Wait for at least 2 signals: MapFocus set + MapClear
+        QVERIFY(focusSpy.wait(5000));
+        if (focusSpy.count() < 2) {
+            focusSpy.wait(2000);
+        }
+        QCOMPARE(connState.mapFocusActive(), false);
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify OverlayRemove removes a specific overlay from ConnectionState.
+    void overlayRemoveUpdatesConnectionState() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()[QStringLiteral("type")].toString() ==
+                    QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-orm");
+                opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                // Add two overlays, then remove one.
+                QJsonObject oa1;
+                oa1[QStringLiteral("type")]      = QStringLiteral("OverlayAdd");
+                oa1[QStringLiteral("overlayId")] = QStringLiteral("adsb");
+                oa1[QStringLiteral("params")]    = QJsonObject();
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(oa1).toJson(QJsonDocument::Compact)));
+
+                QJsonObject oa2;
+                oa2[QStringLiteral("type")]      = QStringLiteral("OverlayAdd");
+                oa2[QStringLiteral("overlayId")] = QStringLiteral("weather_current");
+                oa2[QStringLiteral("params")]    = QJsonObject();
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(oa2).toJson(QJsonDocument::Compact)));
+
+                QJsonObject rm;
+                rm[QStringLiteral("type")]      = QStringLiteral("OverlayRemove");
+                rm[QStringLiteral("overlayId")] = QStringLiteral("adsb");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(rm).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy overlaySpy(&connState, &ConnectionState::activeOverlayIdsChanged);
+        client.connectToServer();
+
+        // Wait for all 3 signals: add, add, remove
+        QVERIFY(overlaySpy.wait(5000));
+        if (overlaySpy.count() < 3) {
+            overlaySpy.wait(2000);
+        }
+        QCOMPARE(connState.activeOverlayIds().size(), 1);
+        QCOMPARE(connState.activeOverlayIds().at(0), QStringLiteral("weather_current"));
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify BackgroundChange updates activeBackgroundId, backgroundParams, and sceneTransition.
+    void backgroundChangeUpdatesConnectionState() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()[QStringLiteral("type")].toString() ==
+                    QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-bg");
+                opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                QJsonObject params;
+                params[QStringLiteral("center_lat")] = 33.814;
+                QJsonObject bc;
+                bc[QStringLiteral("type")]         = QStringLiteral("BackgroundChange");
+                bc[QStringLiteral("backgroundId")] = QStringLiteral("vfr");
+                bc[QStringLiteral("params")]        = params;
+                bc[QStringLiteral("transition")]    = QStringLiteral("instant");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(bc).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy bgSpy(&connState, &ConnectionState::activeBackgroundIdChanged);
+        client.connectToServer();
+
+        QVERIFY(bgSpy.wait(5000));
+        QCOMPARE(connState.activeBackgroundId(), QStringLiteral("vfr"));
         QCOMPARE(connState.sceneTransition(), QStringLiteral("instant"));
-        QCOMPARE(connState.sceneParams()[QStringLiteral("focus")].toString(),
-                 QStringLiteral("dallas"));
+        QCOMPARE(connState.backgroundParams()[QStringLiteral("center_lat")].toDouble(), 33.814);
 
         client.disconnectFromServer();
     }
@@ -479,8 +620,8 @@ class TestWsClientStateMachine : public QObject {
         client.disconnectFromServer();
     }
 
-    /// Verify SceneClear resets scene data and transitions to "dashboard".
-    void sceneClearResetsState() {
+    /// Verify OverlayClear removes all active overlays.
+    void overlayClearResetsState() {
         MockServer server;
         server.setMessageHandler([](const QString &msg, QWebSocket *client) {
             QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
@@ -488,21 +629,28 @@ class TestWsClientStateMachine : public QObject {
                     QLatin1String("DeviceIdentify")) {
                 QJsonObject opened;
                 opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
-                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-clr");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-oclr");
                 opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
                 client->sendTextMessage(
                     QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
 
-                // Pre-populate some scene data, then clear it.
-                QJsonObject sdp;
-                sdp[QStringLiteral("type")]    = QStringLiteral("SceneDataPush");
-                sdp[QStringLiteral("modelId")] = QStringLiteral("weather");
-                sdp[QStringLiteral("data")]    = QJsonObject();
+                // Add two overlays, then clear them.
+                QJsonObject oa1;
+                oa1[QStringLiteral("type")]      = QStringLiteral("OverlayAdd");
+                oa1[QStringLiteral("overlayId")] = QStringLiteral("adsb");
+                oa1[QStringLiteral("params")]    = QJsonObject();
                 client->sendTextMessage(
-                    QString::fromUtf8(QJsonDocument(sdp).toJson(QJsonDocument::Compact)));
+                    QString::fromUtf8(QJsonDocument(oa1).toJson(QJsonDocument::Compact)));
+
+                QJsonObject oa2;
+                oa2[QStringLiteral("type")]      = QStringLiteral("OverlayAdd");
+                oa2[QStringLiteral("overlayId")] = QStringLiteral("weather_current");
+                oa2[QStringLiteral("params")]    = QJsonObject();
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(oa2).toJson(QJsonDocument::Compact)));
 
                 QJsonObject clr;
-                clr[QStringLiteral("type")] = QStringLiteral("SceneClear");
+                clr[QStringLiteral("type")] = QStringLiteral("OverlayClear");
                 client->sendTextMessage(
                     QString::fromUtf8(QJsonDocument(clr).toJson(QJsonDocument::Compact)));
             }
@@ -511,12 +659,16 @@ class TestWsClientStateMachine : public QObject {
         ConnectionState connState;
         PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
                                       &connState);
-        QSignalSpy sceneSpy(&connState, &ConnectionState::activeSceneIdChanged);
+        QSignalSpy overlaySpy(&connState, &ConnectionState::activeOverlayIdsChanged);
         client.connectToServer();
 
-        QVERIFY(sceneSpy.wait(5000));
-        QCOMPARE(connState.activeSceneId(), QStringLiteral("dashboard"));
-        QVERIFY(connState.sceneData().isEmpty());
+        // Wait for the OverlayClear signal (3rd emission: add, add, clear)
+        QVERIFY(overlaySpy.wait(5000));
+        // Drain remaining signals
+        if (overlaySpy.count() < 3) {
+            overlaySpy.wait(2000);
+        }
+        QVERIFY(connState.activeOverlayIds().isEmpty());
 
         client.disconnectFromServer();
     }

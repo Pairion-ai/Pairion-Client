@@ -173,26 +173,79 @@ void ConnectionState::clearMapFocus() {
     }
 }
 
-QString ConnectionState::activeSceneId() const {
-    return m_activeSceneId;
+QString ConnectionState::activeBackgroundId() const {
+    return m_activeBackgroundId;
+}
+
+QStringList ConnectionState::activeOverlayIds() const {
+    return m_activeOverlayIds;
 }
 
 QVariantMap ConnectionState::sceneData() const {
     return m_sceneData;
 }
 
-QVariantMap ConnectionState::sceneParams() const {
-    return m_sceneParams;
+QVariantMap ConnectionState::backgroundParams() const {
+    return m_backgroundParams;
+}
+
+QVariantMap ConnectionState::overlayParams() const {
+    return m_overlayParams;
 }
 
 QString ConnectionState::sceneTransition() const {
     return m_sceneTransition;
 }
 
-void ConnectionState::setActiveSceneId(const QString &sceneId) {
-    if (m_activeSceneId != sceneId) {
-        m_activeSceneId = sceneId;
-        emit activeSceneIdChanged();
+void ConnectionState::setBackground(const QString &backgroundId, const QJsonObject &params,
+                                    const QString &transition) {
+    bool changed = false;
+    if (m_activeBackgroundId != backgroundId) {
+        m_activeBackgroundId = backgroundId;
+        changed = true;
+    }
+    m_backgroundParams = params.toVariantMap();
+    const QString t = transition.isEmpty() ? QStringLiteral("crossfade") : transition;
+    if (m_sceneTransition != t) {
+        m_sceneTransition = t;
+        emit sceneTransitionChanged();
+    }
+    emit backgroundParamsChanged();
+    if (changed) {
+        emit activeBackgroundIdChanged();
+    }
+}
+
+void ConnectionState::setActiveBackgroundId(const QString &backgroundId) {
+    if (m_activeBackgroundId != backgroundId) {
+        m_activeBackgroundId = backgroundId;
+        emit activeBackgroundIdChanged();
+    }
+}
+
+void ConnectionState::addOverlay(const QString &overlayId, const QJsonObject &params) {
+    if (!m_activeOverlayIds.contains(overlayId)) {
+        m_activeOverlayIds.append(overlayId);
+    }
+    m_overlayParams[overlayId] = params.toVariantMap();
+    emit overlayParamsChanged();
+    emit activeOverlayIdsChanged();
+}
+
+void ConnectionState::removeOverlay(const QString &overlayId) {
+    if (m_activeOverlayIds.removeAll(overlayId) > 0) {
+        m_overlayParams.remove(overlayId);
+        emit overlayParamsChanged();
+        emit activeOverlayIdsChanged();
+    }
+}
+
+void ConnectionState::clearOverlays() {
+    if (!m_activeOverlayIds.isEmpty()) {
+        m_activeOverlayIds.clear();
+        m_overlayParams.clear();
+        emit overlayParamsChanged();
+        emit activeOverlayIdsChanged();
     }
 }
 
@@ -205,13 +258,6 @@ void ConnectionState::clearSceneData() {
     if (!m_sceneData.isEmpty()) {
         m_sceneData.clear();
         emit sceneDataChanged();
-    }
-}
-
-void ConnectionState::setSceneParams(const QVariantMap &params) {
-    if (m_sceneParams != params) {
-        m_sceneParams = params;
-        emit sceneParamsChanged();
     }
 }
 

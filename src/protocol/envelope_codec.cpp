@@ -118,17 +118,24 @@ std::optional<InboundMessage> EnvelopeCodec::deserialize(const QJsonObject &obj)
     if (type == QLatin1String("MapClear")) {
         return MapClear{};
     }
-    if (type == QLatin1String("SceneChange")) {
-        return SceneChange{obj[QStringLiteral("sceneId")].toString(),
-                           obj[QStringLiteral("params")].toObject(),
-                           obj[QStringLiteral("transition")].toString()};
+    if (type == QLatin1String("BackgroundChange")) {
+        return BackgroundChange{obj[QStringLiteral("backgroundId")].toString(),
+                                obj[QStringLiteral("params")].toObject(),
+                                obj[QStringLiteral("transition")].toString()};
+    }
+    if (type == QLatin1String("OverlayAdd")) {
+        return OverlayAdd{obj[QStringLiteral("overlayId")].toString(),
+                          obj[QStringLiteral("params")].toObject()};
+    }
+    if (type == QLatin1String("OverlayRemove")) {
+        return OverlayRemove{obj[QStringLiteral("overlayId")].toString()};
+    }
+    if (type == QLatin1String("OverlayClear")) {
+        return OverlayClear{};
     }
     if (type == QLatin1String("SceneDataPush")) {
         return SceneDataPush{obj[QStringLiteral("modelId")].toString(),
                              obj[QStringLiteral("data")]};
-    }
-    if (type == QLatin1String("SceneClear")) {
-        return SceneClear{};
     }
 
     return std::nullopt;

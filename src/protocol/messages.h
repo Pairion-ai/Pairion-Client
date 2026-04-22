@@ -228,18 +228,44 @@ struct MapClear {
 };
 
 /**
- * @brief Server command to switch the active HUD scene.
+ * @brief Server command to switch the active background layer.
  *
- * Transitions the SceneManager to a new scene plugin identified by \p sceneId.
- * The scene plugin is loaded from qml/Scenes/<sceneId>/<capitalized-sceneId>Scene.qml.
- * \p params is forwarded as the scene's sceneParams property.
- * \p transition controls the visual animation: "crossfade" (default), "instant", or "slide".
+ * LayerManager loads the background identified by \p backgroundId.
+ * \p params is forwarded to the background as its params property.
+ * \p transition controls the visual animation: "crossfade" (default) or "instant".
  */
-struct SceneChange {
-    static constexpr const char *kType = "SceneChange";
-    QString sceneId;
+struct BackgroundChange {
+    static constexpr const char *kType = "BackgroundChange";
+    QString backgroundId;
     QJsonObject params;
-    QString transition; ///< "crossfade" | "instant" | "slide"
+    QString transition; ///< "crossfade" | "instant"
+};
+
+/**
+ * @brief Server command to add an overlay layer to the active stack.
+ *
+ * LayerManager instantiates the overlay identified by \p overlayId and adds it
+ * on top of the existing overlay stack. Multiple overlays can be active simultaneously.
+ */
+struct OverlayAdd {
+    static constexpr const char *kType = "OverlayAdd";
+    QString overlayId;
+    QJsonObject params;
+};
+
+/**
+ * @brief Server command to remove a specific overlay from the active stack.
+ */
+struct OverlayRemove {
+    static constexpr const char *kType = "OverlayRemove";
+    QString overlayId;
+};
+
+/**
+ * @brief Server command to remove all active overlays, leaving only the background and HUD.
+ */
+struct OverlayClear {
+    static constexpr const char *kType = "OverlayClear";
 };
 
 /**
@@ -256,20 +282,12 @@ struct SceneDataPush {
     QJsonValue data;
 };
 
-/**
- * @brief Server command to clear the active scene and return to the default dashboard.
- *
- * Resets accumulated sceneData and transitions to the "dashboard" scene.
- */
-struct SceneClear {
-    static constexpr const char *kType = "SceneClear";
-};
-
 /// Variant of all inbound text-frame message types.
 using InboundMessage =
     std::variant<SessionOpened, SessionClosed, HeartbeatPong, ErrorMessage, AgentStateChange,
                  TranscriptPartial, TranscriptFinal, LlmTokenStream, ToolCallStarted,
                  ToolCallCompleted, AudioStreamStartOut, AudioStreamEndOut, UnderBreathAck,
-                 MapFocus, MapClear, SceneChange, SceneDataPush, SceneClear>;
+                 MapFocus, MapClear, BackgroundChange, OverlayAdd, OverlayRemove, OverlayClear,
+                 SceneDataPush>;
 
 } // namespace pairion::protocol

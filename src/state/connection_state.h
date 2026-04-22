@@ -9,6 +9,7 @@
  * and reconnection metadata via Qt property bindings.
  */
 
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -41,9 +42,11 @@ class ConnectionState : public QObject {
     Q_PROPERTY(double mapFocusLon READ mapFocusLon NOTIFY mapFocusChanged)
     Q_PROPERTY(QString mapFocusLabel READ mapFocusLabel NOTIFY mapFocusChanged)
     Q_PROPERTY(QString mapFocusZoom READ mapFocusZoom NOTIFY mapFocusChanged)
-    Q_PROPERTY(QString activeSceneId READ activeSceneId NOTIFY activeSceneIdChanged)
+    Q_PROPERTY(QString activeBackgroundId READ activeBackgroundId NOTIFY activeBackgroundIdChanged)
+    Q_PROPERTY(QStringList activeOverlayIds READ activeOverlayIds NOTIFY activeOverlayIdsChanged)
     Q_PROPERTY(QVariantMap sceneData READ sceneData NOTIFY sceneDataChanged)
-    Q_PROPERTY(QVariantMap sceneParams READ sceneParams NOTIFY sceneParamsChanged)
+    Q_PROPERTY(QVariantMap backgroundParams READ backgroundParams NOTIFY backgroundParamsChanged)
+    Q_PROPERTY(QVariantMap overlayParams READ overlayParams NOTIFY overlayParamsChanged)
     Q_PROPERTY(QString sceneTransition READ sceneTransition NOTIFY sceneTransitionChanged)
 
   public:
@@ -118,13 +121,17 @@ class ConnectionState : public QObject {
     QString mapFocusLabel() const;
     /// @brief Zoom level of the active map focus: continent, country, region, or city.
     QString mapFocusZoom() const;
-    /// @brief Active scene plugin identifier (e.g. "globe", "space", "dashboard").
-    QString activeSceneId() const;
+    /// @brief Active background layer identifier (e.g. "globe", "space", "vfr", "dark").
+    QString activeBackgroundId() const;
+    /// @brief Ordered list of currently active overlay layer identifiers.
+    QStringList activeOverlayIds() const;
     /// @brief Accumulated scene model data keyed by modelId, updated via SceneDataPush.
     QVariantMap sceneData() const;
-    /// @brief Scene parameters from the most recent SceneChange command.
-    QVariantMap sceneParams() const;
-    /// @brief Transition style from the most recent SceneChange command.
+    /// @brief Parameters for the active background layer from the most recent BackgroundChange.
+    QVariantMap backgroundParams() const;
+    /// @brief Parameters for each active overlay, keyed by overlay ID.
+    QVariantMap overlayParams() const;
+    /// @brief Transition style from the most recent BackgroundChange command.
     QString sceneTransition() const;
 
   public slots:
@@ -182,15 +189,53 @@ class ConnectionState : public QObject {
     /// @brief Clear the active map focus and resume globe auto-scroll.
     void clearMapFocus();
     /**
-     * @brief Set the active scene plugin identifier, emitting activeSceneIdChanged if changed.
-     * @param sceneId Scene identifier, e.g. "globe", "space", or "dashboard".
+     * @brief Set the active background layer, emitting background-related change signals.
+     *
+     * Called from PairionWebSocketClient when a BackgroundChange message is received.
+     * Internally sets activeBackgroundId, backgroundParams, and sceneTransition.
+     *
+     * @param backgroundId Background identifier, e.g. "globe", "space", "vfr", "dark".
+     * @param params Parameters from the BackgroundChange message (center_lat, center_lon, etc.).
+     * @param transition Transition name: "crossfade" or "instant".
      */
-    void setActiveSceneId(const QString &sceneId);
+    void setBackground(const QString &backgroundId, const QJsonObject &params,
+                       const QString &transition);
+
+    /**
+     * @brief Set the active background ID only (QML-friendly overload without params).
+     *
+     * Used by QML shortcuts (e.g. B key cycling). Sets activeBackgroundId and emits the signal.
+     * @param backgroundId Background identifier.
+     */
+    Q_INVOKABLE void setActiveBackgroundId(const QString &backgroundId);
+
+    /**
+     * @brief Add an overlay to the active stack, emitting activeOverlayIdsChanged.
+     *
+     * Called from PairionWebSocketClient when an OverlayAdd message is received.
+     * If the overlay is already active, its params are updated but it is not duplicated.
+     *
+     * @param overlayId Overlay identifier, e.g. "adsb", "weather_current", "markers".
+     * @param params Parameters for the overlay from the OverlayAdd message.
+     */
+    void addOverlay(const QString &overlayId, const QJsonObject &params);
+
+    /**
+     * @brief Remove a specific overlay from the active stack, emitting activeOverlayIdsChanged.
+     * @param overlayId Overlay identifier to remove.
+     */
+    void removeOverlay(const QString &overlayId);
+
+    /**
+     * @brief Remove all active overlays, emitting activeOverlayIdsChanged.
+     */
+    void clearOverlays();
+
     /**
      * @brief Accumulate model data for the given modelId, emitting sceneDataChanged.
      *
      * Accepts a QVariant so that both JSON-object payloads (QVariantMap) and
-     * JSON-array payloads (QVariantList) are stored correctly. The ADS-B scene,
+     * JSON-array payloads (QVariantList) are stored correctly. The ADS-B overlay,
      * for example, pushes its aircraft list as a JSON array.
      *
      * @param modelId Key identifying the data model (e.g. "adsb", "news").
@@ -200,13 +245,8 @@ class ConnectionState : public QObject {
     /// @brief Clear all accumulated scene data and emit sceneDataChanged.
     void clearSceneData();
     /**
-     * @brief Replace the current scene parameters, emitting sceneParamsChanged if changed.
-     * @param params Variant map of parameters from the SceneChange command.
-     */
-    void setSceneParams(const QVariantMap &params);
-    /**
      * @brief Set the active scene transition style, emitting sceneTransitionChanged if changed.
-     * @param transition Transition name: "crossfade", "instant", or "slide".
+     * @param transition Transition name: "crossfade" or "instant".
      */
     void setSceneTransition(const QString &transition);
 
@@ -230,13 +270,17 @@ class ConnectionState : public QObject {
     void backgroundContextChanged();
     /// Emitted when the map focus state changes (set or cleared).
     void mapFocusChanged();
-    /// Emitted when the active scene plugin identifier changes.
-    void activeSceneIdChanged();
-    /// Emitted when scene model data is updated (SceneDataPush or SceneClear).
+    /// Emitted when the active background layer identifier changes.
+    void activeBackgroundIdChanged();
+    /// Emitted when the active overlay layer list changes (add, remove, or clear).
+    void activeOverlayIdsChanged();
+    /// Emitted when scene model data is updated (SceneDataPush).
     void sceneDataChanged();
-    /// Emitted when scene parameters are updated (SceneChange).
-    void sceneParamsChanged();
-    /// Emitted when the scene transition style changes.
+    /// Emitted when the active background parameters are updated (BackgroundChange).
+    void backgroundParamsChanged();
+    /// Emitted when overlay parameters are updated (OverlayAdd or OverlayRemove).
+    void overlayParamsChanged();
+    /// Emitted when the background transition style changes.
     void sceneTransitionChanged();
 
   private:
@@ -256,9 +300,11 @@ class ConnectionState : public QObject {
     double m_mapFocusLon = 0.0;
     QString m_mapFocusLabel;
     QString m_mapFocusZoom;
-    QString m_activeSceneId = QStringLiteral("adsb-radar");
+    QString m_activeBackgroundId = QStringLiteral("globe");
+    QStringList m_activeOverlayIds;
     QVariantMap m_sceneData;
-    QVariantMap m_sceneParams;
+    QVariantMap m_backgroundParams;
+    QVariantMap m_overlayParams;
     QString m_sceneTransition = QStringLiteral("crossfade");
 };
 

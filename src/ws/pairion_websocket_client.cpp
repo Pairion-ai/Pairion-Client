@@ -155,19 +155,22 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
             } else if constexpr (std::is_same_v<T, protocol::MapClear>) {
                 qCInfo(lcWs) << "Map clear";
                 m_connState->clearMapFocus();
-            } else if constexpr (std::is_same_v<T, protocol::SceneChange>) {
-                qCInfo(lcWs) << "Scene change: sceneId=" << m.sceneId
+            } else if constexpr (std::is_same_v<T, protocol::BackgroundChange>) {
+                qCInfo(lcWs) << "Background change: backgroundId=" << m.backgroundId
                               << "transition=" << m.transition;
-                m_connState->setSceneParams(m.params.toVariantMap());
-                m_connState->setSceneTransition(m.transition);
-                m_connState->setActiveSceneId(m.sceneId);
+                m_connState->setBackground(m.backgroundId, m.params, m.transition);
+            } else if constexpr (std::is_same_v<T, protocol::OverlayAdd>) {
+                qCInfo(lcWs) << "Overlay add: overlayId=" << m.overlayId;
+                m_connState->addOverlay(m.overlayId, m.params);
+            } else if constexpr (std::is_same_v<T, protocol::OverlayRemove>) {
+                qCInfo(lcWs) << "Overlay remove: overlayId=" << m.overlayId;
+                m_connState->removeOverlay(m.overlayId);
+            } else if constexpr (std::is_same_v<T, protocol::OverlayClear>) {
+                qCInfo(lcWs) << "Overlay clear";
+                m_connState->clearOverlays();
             } else if constexpr (std::is_same_v<T, protocol::SceneDataPush>) {
                 qCInfo(lcWs) << "Scene data push: modelId=" << m.modelId;
                 m_connState->setSceneData(m.modelId, m.data.toVariant());
-            } else if constexpr (std::is_same_v<T, protocol::SceneClear>) {
-                qCInfo(lcWs) << "Scene clear";
-                m_connState->clearSceneData();
-                m_connState->setActiveSceneId(QStringLiteral("dashboard"));
             }
         },
         msg);

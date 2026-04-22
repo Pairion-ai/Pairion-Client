@@ -1,33 +1,33 @@
 /**
- * @file GlobeScene.qml
- * @brief Globe scene plugin — wraps HemisphereMap with server-driven focus and news pins.
+ * @file GlobeBackground.qml
+ * @brief Globe background plugin — wraps HemisphereMap with server-driven focus and news pins.
  *
- * This scene is the default (activeSceneId = "globe"). It renders the animated
+ * This background is the default (activeBackgroundId = "globe"). It renders the animated
  * day/night hemisphere map with five news-pin overlays and responds to
- * ConnectionState.mapFocusActive / mapFocusLat / mapFocusLon / mapFocusZoom
- * exactly as HemisphereMap previously did when hosted directly in PairionHUD.
+ * ConnectionState.mapFocusActive / mapFocusLat / mapFocusLon / mapFocusZoom.
  *
- * PairionHUD.focusPin() forwards pin-index changes through SceneManager.currentScene,
- * which updates the activePinIndex property exposed here.
+ * PairionHUD.focusPin() forwards pin-index changes through LayerManager.currentBackground
+ * using the activePinIndex property exposed here.
  */
 import QtQuick
 import Pairion
-import "../../HUD"
+import "../HUD"
 
 Item {
     id: root
 
-    // ── SceneBase contract ────────────────────────────────────────
+    // ── BackgroundBase contract ───────────────────────────────────
 
-    /** Server-pushed model data keyed by modelId. */
-    property var    sceneData:   ({})
-    /** Parameters from the activating SceneChange command. */
-    property var    sceneParams: ({})
-    /** Current agent state string from SceneManager. */
-    property string hudState:    "idle"
+    /** @brief Parameters from the BackgroundChange command that activated this background. */
+    property var backgroundParams: ({})
+    /** @brief Model data keyed by modelId. */
+    property var sceneData: ({})
+    /** @brief Current agent state string from LayerManager. */
+    property string hudState: "idle"
 
-    /** @brief Request scene switch (forwarded to SceneManager when needed). */
-    signal requestScene(string sceneId, var params)
+    /** @brief Default coordinate bridge — GlobeBackground is not geo-referenced. */
+    function latLonToScreen(lat, lon) { return Qt.point(width * 0.5, height * 0.5) }
+
     /** @brief Request TTS narration. */
     signal requestSpeak(string text)
 
@@ -35,7 +35,7 @@ Item {
 
     /**
      * @brief Zero-based index of the pin to focus, or -1 to resume auto-scroll.
-     * Set by PairionHUD.focusPin() via SceneManager.currentScene.activePinIndex.
+     * Set by PairionHUD.focusPin() via LayerManager.currentBackground.activePinIndex.
      */
     property int activePinIndex: -1
 

@@ -16,13 +16,13 @@ Item {
     /**
      * @brief Pan + zoom the globe to the pin at the given index.
      * Pass -1 to zoom out and resume auto-scroll.
-     * Forwards to GlobeScene.activePinIndex via SceneManager.currentScene so the
-     * API remains stable regardless of which scene is currently active.
+     * Forwards to GlobeBackground.activePinIndex via LayerManager.currentBackground so the
+     * API remains stable regardless of which background is currently active.
      */
     function focusPin(index) {
-        var scene = sceneManager.currentScene
-        if (scene && "activePinIndex" in scene)
-            scene.activePinIndex = index
+        var bg = layerManager.currentBackground
+        if (bg && "activePinIndex" in bg)
+            bg.activePinIndex = index
     }
 
     // ── Background ────────────────────────────────────────────────────────────
@@ -32,13 +32,12 @@ Item {
         color: "#070c18"
     }
 
-    // ── Scene manager — replaces ContextBackground + HemisphereMap ──────────────
-    // Loads and transitions between scene plugins driven by ConnectionState.activeSceneId.
-    // GlobeScene ("globe"), SpaceScene ("space"), and DashboardScene ("dashboard") are the
-    // three built-in plugins. Crossfade and instant transitions are supported.
+    // ── Layer manager — loads and transitions between background and overlay plugins ──
+    // Driven by ConnectionState.activeBackgroundId and ConnectionState.activeOverlayIds.
+    // Crossfade and instant transitions are supported.
 
-    SceneManager {
-        id: sceneManager
+    LayerManager {
+        id: layerManager
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: topBar.bottom

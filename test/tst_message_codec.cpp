@@ -352,24 +352,54 @@ class TestMessageCodec : public QObject {
         QVERIFY(msg != nullptr);
     }
 
-    /// Verify SceneChange deserializes all fields correctly.
-    void deserializeSceneChange() {
+    /// Verify BackgroundChange deserializes all fields correctly.
+    void deserializeBackgroundChange() {
         QJsonObject params;
-        params["focus"] = QStringLiteral("dallas");
+        params["center_lat"] = 33.814;
+        params["center_lon"] = -96.582;
         QJsonObject obj;
-        obj["type"]       = QStringLiteral("SceneChange");
-        obj["sceneId"]    = QStringLiteral("globe");
-        obj["params"]     = params;
-        obj["transition"] = QStringLiteral("crossfade");
+        obj["type"]         = QStringLiteral("BackgroundChange");
+        obj["backgroundId"] = QStringLiteral("globe");
+        obj["params"]       = params;
+        obj["transition"]   = QStringLiteral("crossfade");
 
         auto result = EnvelopeCodec::deserialize(obj);
         QVERIFY(result.has_value());
-        auto *msg = std::get_if<SceneChange>(&result.value());
+        auto *msg = std::get_if<BackgroundChange>(&result.value());
         QVERIFY(msg != nullptr);
-        QCOMPARE(msg->sceneId, QStringLiteral("globe"));
+        QCOMPARE(msg->backgroundId, QStringLiteral("globe"));
         QCOMPARE(msg->transition, QStringLiteral("crossfade"));
-        QCOMPARE(msg->params[QStringLiteral("focus")].toString(),
-                 QStringLiteral("dallas"));
+        QCOMPARE(msg->params[QStringLiteral("center_lat")].toDouble(), 33.814);
+    }
+
+    /// Verify OverlayAdd deserializes overlayId and params.
+    void deserializeOverlayAdd() {
+        QJsonObject params;
+        params["radius_nm"] = 8;
+        QJsonObject obj;
+        obj["type"]      = QStringLiteral("OverlayAdd");
+        obj["overlayId"] = QStringLiteral("adsb");
+        obj["params"]    = params;
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<OverlayAdd>(&result.value());
+        QVERIFY(msg != nullptr);
+        QCOMPARE(msg->overlayId, QStringLiteral("adsb"));
+        QCOMPARE(msg->params[QStringLiteral("radius_nm")].toInt(), 8);
+    }
+
+    /// Verify OverlayRemove deserializes overlayId correctly.
+    void deserializeOverlayRemove() {
+        QJsonObject obj;
+        obj["type"]      = QStringLiteral("OverlayRemove");
+        obj["overlayId"] = QStringLiteral("adsb");
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<OverlayRemove>(&result.value());
+        QVERIFY(msg != nullptr);
+        QCOMPARE(msg->overlayId, QStringLiteral("adsb"));
     }
 
     /// Verify SceneDataPush deserializes modelId and object data correctly.
@@ -415,14 +445,14 @@ class TestMessageCodec : public QObject {
                  QStringLiteral("abc123"));
     }
 
-    /// Verify SceneClear deserializes.
-    void deserializeSceneClear() {
+    /// Verify OverlayClear deserializes.
+    void deserializeOverlayClear() {
         QJsonObject obj;
-        obj["type"] = QStringLiteral("SceneClear");
+        obj["type"] = QStringLiteral("OverlayClear");
 
         auto result = EnvelopeCodec::deserialize(obj);
         QVERIFY(result.has_value());
-        auto *msg = std::get_if<SceneClear>(&result.value());
+        auto *msg = std::get_if<OverlayClear>(&result.value());
         QVERIFY(msg != nullptr);
     }
 

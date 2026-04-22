@@ -1,24 +1,29 @@
 /**
- * @file SpaceScene.qml
- * @brief Space scene plugin — animated deep-space star field with nebula haze.
+ * @file SpaceBackground.qml
+ * @brief Space background plugin — animated deep-space star field with nebula haze.
  *
- * Extracted from ContextBackground.qml (the "space" context). Renders 180
- * twinkling background stars and 9 bright accent stars with diffraction spikes
- * over a deep-space gradient with a soft nebula glow. Star positions use a
- * deterministic pseudo-random sequence so they are stable across window resizes.
+ * Renders 180 twinkling background stars and 9 bright accent stars with diffraction spikes
+ * over a deep-space gradient with a soft nebula glow. Star positions use a deterministic
+ * pseudo-random sequence so they are stable across window resizes.
  */
 import QtQuick
 
 Item {
     id: root
 
-    // ── SceneBase contract ────────────────────────────────────────
+    // ── BackgroundBase contract ───────────────────────────────────
 
-    property var    sceneData:   ({})
-    property var    sceneParams: ({})
-    property string hudState:    "idle"
+    /** @brief Parameters from the BackgroundChange command that activated this background. */
+    property var backgroundParams: ({})
+    /** @brief Model data keyed by modelId. */
+    property var sceneData: ({})
+    /** @brief Current agent state string from LayerManager. */
+    property string hudState: "idle"
 
-    signal requestScene(string sceneId, var params)
+    /** @brief Default coordinate bridge — SpaceBackground is not geo-referenced. */
+    function latLonToScreen(lat, lon) { return Qt.point(width * 0.5, height * 0.5) }
+
+    /** @brief Request TTS narration. */
     signal requestSpeak(string text)
 
     // ── Deep-space gradient ───────────────────────────────────────

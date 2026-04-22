@@ -64,20 +64,20 @@ ApplicationWindow {
     Shortcut { sequence: "4"; onActivated: if (root.hudActive) hud.focusPin(3) }
     Shortcut { sequence: "5"; onActivated: if (root.hudActive) hud.focusPin(4) }
 
-    // ── Scene shortcuts (test / demo) ────────────────────────────────────────────
-    // "B" cycles through the built-in scenes: globe → space → globe …
-    // In production, the server sends SceneChange messages to drive scene transitions.
+    // ── Background shortcuts (test / demo) ──────────────────────────────────────
+    // "B" cycles through the built-in backgrounds: globe → space → globe …
+    // In production, the server sends BackgroundChange messages to drive transitions.
 
-    readonly property var sceneIds: ["globe", "space"]
+    readonly property var backgroundIds: ["globe", "space"]
 
     Shortcut {
         sequence: "B"
         onActivated: {
             if (!root.hudActive) return
-            var ids     = root.sceneIds
-            var current = ConnectionState.activeSceneId
+            var ids     = root.backgroundIds
+            var current = ConnectionState.activeBackgroundId
             var next    = ids[(ids.indexOf(current) + 1) % ids.length]
-            ConnectionState.setActiveSceneId(next)
+            ConnectionState.setActiveBackgroundId(next)
         }
     }
 }

@@ -11,7 +11,7 @@
 #include <QLoggingCategory>
 #include <QMediaDevices>
 
-Q_LOGGING_CATEGORY(lcPlayback, "pairion.audio.playback")
+Q_LOGGING_CATEGORY(lcPlayback, "pairion.audio.playback") // LCOV_EXCL_LINE — static category registration; only the internal vtable-init path is unreachable
 
 namespace pairion::audio {
 
@@ -35,6 +35,8 @@ PairionAudioPlayback::PairionAudioPlayback(QObject *parent) : QObject(parent) {
     // of a long TTS response is not dropped when the sink buffer overflows.
     m_drainTimer = new QTimer(this);
     m_drainTimer->setInterval(20); // one Opus frame period
+    // LCOV_EXCL_START — drain-timer lambda only fires when jitter buffer has residual
+    // audio frames after a stream end; not exercisable without a real audio sink in tests.
     connect(m_drainTimer, &QTimer::timeout, this, [this]() {
         while (!m_jitterBuffer.isEmpty() && m_audioDevice) {
             QByteArray &head = m_jitterBuffer.head();
@@ -50,6 +52,7 @@ PairionAudioPlayback::PairionAudioPlayback(QObject *parent) : QObject(parent) {
         if (m_jitterBuffer.isEmpty())
             m_drainTimer->stop();
     });
+    // LCOV_EXCL_STOP
 }
 
 PairionAudioPlayback::~PairionAudioPlayback() {
@@ -159,8 +162,10 @@ void PairionAudioPlayback::handleStreamEnd(const QString &reason) {
     // Normal end: flush jitter buffer to sink via timer so the tail of long
     // responses is not dropped when the sink buffer overflows. Sink continues
     // draining its internal buffer — do NOT stop it.
+    // LCOV_EXCL_START — only reachable when audio hardware populates jitter buffer
     if (!m_jitterBuffer.isEmpty())
         m_drainTimer->start();
+    // LCOV_EXCL_STOP
 }
 
 } // namespace pairion::audio

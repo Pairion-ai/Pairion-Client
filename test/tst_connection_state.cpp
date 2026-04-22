@@ -6,6 +6,7 @@
 
 #include "../src/state/connection_state.h"
 
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -105,35 +106,131 @@ class TestConnectionState : public QObject {
         QCOMPARE(spy.count(), 0);
     }
 
-    // ── Scene property tests ──────────────────────────────────────
+    // ── Layer property tests ──────────────────────────────────────
 
-    /// activeSceneId defaults to "globe".
-    void activeSceneIdDefault() {
+    /// activeBackgroundId defaults to "globe".
+    void activeBackgroundIdDefault() {
         ConnectionState cs;
-        QCOMPARE(cs.activeSceneId(), QStringLiteral("globe"));
+        QCOMPARE(cs.activeBackgroundId(), QStringLiteral("globe"));
     }
 
-    /// setActiveSceneId stores the new value.
-    void activeSceneIdSetAndGet() {
+    /// setActiveBackgroundId stores the new value.
+    void activeBackgroundIdSetAndGet() {
         ConnectionState cs;
-        cs.setActiveSceneId(QStringLiteral("space"));
-        QCOMPARE(cs.activeSceneId(), QStringLiteral("space"));
+        cs.setActiveBackgroundId(QStringLiteral("space"));
+        QCOMPARE(cs.activeBackgroundId(), QStringLiteral("space"));
     }
 
-    /// setActiveSceneId emits activeSceneIdChanged on change.
-    void activeSceneIdEmitsSignal() {
+    /// setActiveBackgroundId emits activeBackgroundIdChanged on change.
+    void activeBackgroundIdEmitsSignal() {
         ConnectionState cs;
-        QSignalSpy spy(&cs, &ConnectionState::activeSceneIdChanged);
-        cs.setActiveSceneId(QStringLiteral("space"));
+        QSignalSpy spy(&cs, &ConnectionState::activeBackgroundIdChanged);
+        cs.setActiveBackgroundId(QStringLiteral("space"));
         QCOMPARE(spy.count(), 1);
     }
 
-    /// setActiveSceneId does not emit when value is unchanged.
-    void activeSceneIdNoEmitOnSameValue() {
+    /// setActiveBackgroundId does not emit when value is unchanged.
+    void activeBackgroundIdNoEmitOnSameValue() {
         ConnectionState cs;
-        QSignalSpy spy(&cs, &ConnectionState::activeSceneIdChanged);
-        cs.setActiveSceneId(QStringLiteral("globe"));
+        QSignalSpy spy(&cs, &ConnectionState::activeBackgroundIdChanged);
+        cs.setActiveBackgroundId(QStringLiteral("globe"));
         QCOMPARE(spy.count(), 0);
+    }
+
+    /// activeOverlayIds is empty by default.
+    void activeOverlayIdsDefault() {
+        ConnectionState cs;
+        QVERIFY(cs.activeOverlayIds().isEmpty());
+    }
+
+    /// addOverlay appends overlayId and emits activeOverlayIdsChanged.
+    void addOverlayAppendsId() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::activeOverlayIdsChanged);
+        cs.addOverlay(QStringLiteral("adsb"), QJsonObject());
+        QCOMPARE(cs.activeOverlayIds().size(), 1);
+        QCOMPARE(cs.activeOverlayIds().at(0), QStringLiteral("adsb"));
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// addOverlay does not duplicate an existing overlayId.
+    void addOverlayNoDuplicate() {
+        ConnectionState cs;
+        cs.addOverlay(QStringLiteral("adsb"), QJsonObject());
+        cs.addOverlay(QStringLiteral("adsb"), QJsonObject());
+        QCOMPARE(cs.activeOverlayIds().size(), 1);
+    }
+
+    /// removeOverlay removes an existing overlay and emits activeOverlayIdsChanged.
+    void removeOverlayRemovesId() {
+        ConnectionState cs;
+        cs.addOverlay(QStringLiteral("adsb"), QJsonObject());
+        QSignalSpy spy(&cs, &ConnectionState::activeOverlayIdsChanged);
+        cs.removeOverlay(QStringLiteral("adsb"));
+        QVERIFY(cs.activeOverlayIds().isEmpty());
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// removeOverlay does not emit when overlayId is not active.
+    void removeOverlayNoEmitWhenAbsent() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::activeOverlayIdsChanged);
+        cs.removeOverlay(QStringLiteral("adsb"));
+        QCOMPARE(spy.count(), 0);
+    }
+
+    /// clearOverlays empties the overlay list and emits activeOverlayIdsChanged.
+    void clearOverlaysClearsAll() {
+        ConnectionState cs;
+        cs.addOverlay(QStringLiteral("adsb"), QJsonObject());
+        cs.addOverlay(QStringLiteral("weather_current"), QJsonObject());
+        QSignalSpy spy(&cs, &ConnectionState::activeOverlayIdsChanged);
+        cs.clearOverlays();
+        QVERIFY(cs.activeOverlayIds().isEmpty());
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// clearOverlays does not emit when already empty.
+    void clearOverlaysNoEmitWhenEmpty() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::activeOverlayIdsChanged);
+        cs.clearOverlays();
+        QCOMPARE(spy.count(), 0);
+    }
+
+    /// setBackground sets activeBackgroundId and emits both background signals.
+    void setBackgroundUpdatesAllFields() {
+        ConnectionState cs;
+        QSignalSpy bgSpy(&cs, &ConnectionState::activeBackgroundIdChanged);
+        QSignalSpy paramSpy(&cs, &ConnectionState::backgroundParamsChanged);
+        QSignalSpy transSpy(&cs, &ConnectionState::sceneTransitionChanged);
+
+        QJsonObject params;
+        params[QStringLiteral("center_lat")] = 33.814;
+        cs.setBackground(QStringLiteral("vfr"), params, QStringLiteral("instant"));
+
+        QCOMPARE(cs.activeBackgroundId(), QStringLiteral("vfr"));
+        QCOMPARE(cs.backgroundParams()[QStringLiteral("center_lat")].toDouble(), 33.814);
+        QCOMPARE(cs.sceneTransition(), QStringLiteral("instant"));
+        QCOMPARE(bgSpy.count(), 1);
+        QCOMPARE(paramSpy.count(), 1);
+        QCOMPARE(transSpy.count(), 1);
+    }
+
+    /// overlayParams is empty by default.
+    void overlayParamsDefault() {
+        ConnectionState cs;
+        QVERIFY(cs.overlayParams().isEmpty());
+    }
+
+    /// addOverlay stores params keyed by overlayId in overlayParams.
+    void addOverlayStoresParams() {
+        ConnectionState cs;
+        QJsonObject params;
+        params[QStringLiteral("radius_nm")] = 8;
+        cs.addOverlay(QStringLiteral("adsb"), params);
+        QVariantMap stored = cs.overlayParams()[QStringLiteral("adsb")].toMap();
+        QCOMPARE(stored[QStringLiteral("radius_nm")].toInt(), 8);
     }
 
     /// sceneData is empty by default.
@@ -207,37 +304,6 @@ class TestConnectionState : public QObject {
         ConnectionState cs;
         QSignalSpy spy(&cs, &ConnectionState::sceneDataChanged);
         cs.clearSceneData();
-        QCOMPARE(spy.count(), 0);
-    }
-
-    /// sceneParams defaults to an empty map.
-    void sceneParamsDefault() {
-        ConnectionState cs;
-        QVERIFY(cs.sceneParams().isEmpty());
-    }
-
-    /// setSceneParams stores params and emits sceneParamsChanged.
-    void sceneParamsSetAndGet() {
-        ConnectionState cs;
-        QSignalSpy spy(&cs, &ConnectionState::sceneParamsChanged);
-
-        QVariantMap params;
-        params[QStringLiteral("focus")] = QStringLiteral("dallas");
-        cs.setSceneParams(params);
-
-        QCOMPARE(spy.count(), 1);
-        QCOMPARE(cs.sceneParams()[QStringLiteral("focus")].toString(),
-                 QStringLiteral("dallas"));
-    }
-
-    /// setSceneParams does not emit when value is unchanged.
-    void sceneParamsNoEmitOnSameValue() {
-        ConnectionState cs;
-        QVariantMap params; params[QStringLiteral("a")] = 1;
-        cs.setSceneParams(params);
-
-        QSignalSpy spy(&cs, &ConnectionState::sceneParamsChanged);
-        cs.setSceneParams(params);
         QCOMPARE(spy.count(), 0);
     }
 

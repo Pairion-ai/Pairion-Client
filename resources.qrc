@@ -3,24 +3,27 @@
         <file>qml/Main.qml</file>
         <file>qml/Debug/DebugPanel.qml</file>
         <file>qml/HUD/PairionHUD.qml</file>
-        <file>qml/HUD/SceneManager.qml</file>
+        <file>qml/HUD/LayerManager.qml</file>
         <file>qml/HUD/RingSystem.qml</file>
         <file>qml/HUD/FpsCounter.qml</file>
         <file>qml/HUD/HemisphereMap.qml</file>
-        <file>qml/HUD/ContextBackground.qml</file>
         <file>qml/HUD/TopBar.qml</file>
         <file>qml/HUD/DashboardPanels.qml</file>
         <file>qml/HUD/TranscriptStrip.qml</file>
         <file>qml/PairionScene/qmldir</file>
         <file>qml/PairionScene/PairionStyle.qml</file>
-        <file>qml/PairionScene/SceneBase.qml</file>
+        <file>qml/PairionScene/BackgroundBase.qml</file>
+        <file>qml/PairionScene/OverlayBase.qml</file>
         <file>qml/PairionScene/HudPanel.qml</file>
         <file>qml/PairionScene/HudLabel.qml</file>
-        <file>qml/Scenes/globe/GlobeScene.qml</file>
-        <file>qml/Scenes/dashboard/DashboardScene.qml</file>
-        <file>qml/Scenes/space/SpaceScene.qml</file>
-        <file>qml/Scenes/adsb-radar/AdsbRadarScene.qml</file>
-        <file>qml/Scenes/adsb-radar/scene.yaml</file>
+        <file>qml/Backgrounds/GlobeBackground.qml</file>
+        <file>qml/Backgrounds/SpaceBackground.qml</file>
+        <file>qml/Backgrounds/DarkBackground.qml</file>
+        <file>qml/Backgrounds/VfrBackground.qml</file>
+        <file>qml/Overlays/AdsbOverlay.qml</file>
+        <file>qml/Overlays/NewsPinsOverlay.qml</file>
+        <file>qml/Overlays/MarkersOverlay.qml</file>
+        <file>qml/Overlays/WeatherCurrentOverlay.qml</file>
         <file>resources/maps/world_map_day.jpg</file>
         <file>resources/maps/world_map_night.jpg</file>
         <file>resources/model_manifest.json</file>

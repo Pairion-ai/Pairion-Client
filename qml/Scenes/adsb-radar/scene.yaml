@@ -1,4 +1,0 @@
-id: adsb-radar
-name: ADS-B Radar
-description: Live aircraft positions overlaid on a VFR sectional chart background with heading icons and flight callouts.
-entrypoint: AdsbRadarScene.qml
