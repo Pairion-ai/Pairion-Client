@@ -155,6 +155,19 @@ void PairionWebSocketClient::onTextMessageReceived(const QString &message) {
             } else if constexpr (std::is_same_v<T, protocol::MapClear>) {
                 qCInfo(lcWs) << "Map clear";
                 m_connState->clearMapFocus();
+            } else if constexpr (std::is_same_v<T, protocol::SceneChange>) {
+                qCInfo(lcWs) << "Scene change: sceneId=" << m.sceneId
+                              << "transition=" << m.transition;
+                m_connState->setSceneParams(m.params.toVariantMap());
+                m_connState->setSceneTransition(m.transition);
+                m_connState->setActiveSceneId(m.sceneId);
+            } else if constexpr (std::is_same_v<T, protocol::SceneDataPush>) {
+                qCInfo(lcWs) << "Scene data push: modelId=" << m.modelId;
+                m_connState->setSceneData(m.modelId, m.data.toVariantMap());
+            } else if constexpr (std::is_same_v<T, protocol::SceneClear>) {
+                qCInfo(lcWs) << "Scene clear";
+                m_connState->clearSceneData();
+                m_connState->setActiveSceneId(QStringLiteral("dashboard"));
             }
         },
         msg);

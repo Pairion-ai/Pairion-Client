@@ -1,0 +1,5 @@
+module PairionScene
+singleton PairionStyle 1.0 PairionStyle.qml
+SceneBase 1.0 SceneBase.qml
+HudPanel 1.0 HudPanel.qml
+HudLabel 1.0 HudLabel.qml

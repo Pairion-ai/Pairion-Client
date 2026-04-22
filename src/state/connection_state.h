@@ -12,6 +12,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariant>
 
 namespace pairion::state {
 
@@ -40,6 +41,10 @@ class ConnectionState : public QObject {
     Q_PROPERTY(double mapFocusLon READ mapFocusLon NOTIFY mapFocusChanged)
     Q_PROPERTY(QString mapFocusLabel READ mapFocusLabel NOTIFY mapFocusChanged)
     Q_PROPERTY(QString mapFocusZoom READ mapFocusZoom NOTIFY mapFocusChanged)
+    Q_PROPERTY(QString activeSceneId READ activeSceneId NOTIFY activeSceneIdChanged)
+    Q_PROPERTY(QVariantMap sceneData READ sceneData NOTIFY sceneDataChanged)
+    Q_PROPERTY(QVariantMap sceneParams READ sceneParams NOTIFY sceneParamsChanged)
+    Q_PROPERTY(QString sceneTransition READ sceneTransition NOTIFY sceneTransitionChanged)
 
   public:
     /**
@@ -113,6 +118,14 @@ class ConnectionState : public QObject {
     QString mapFocusLabel() const;
     /// @brief Zoom level of the active map focus: continent, country, region, or city.
     QString mapFocusZoom() const;
+    /// @brief Active scene plugin identifier (e.g. "globe", "space", "dashboard").
+    QString activeSceneId() const;
+    /// @brief Accumulated scene model data keyed by modelId, updated via SceneDataPush.
+    QVariantMap sceneData() const;
+    /// @brief Scene parameters from the most recent SceneChange command.
+    QVariantMap sceneParams() const;
+    /// @brief Transition style from the most recent SceneChange command.
+    QString sceneTransition() const;
 
   public slots:
     /**
@@ -168,6 +181,29 @@ class ConnectionState : public QObject {
     void setMapFocus(double lat, double lon, const QString &label, const QString &zoom);
     /// @brief Clear the active map focus and resume globe auto-scroll.
     void clearMapFocus();
+    /**
+     * @brief Set the active scene plugin identifier, emitting activeSceneIdChanged if changed.
+     * @param sceneId Scene identifier, e.g. "globe", "space", or "dashboard".
+     */
+    void setActiveSceneId(const QString &sceneId);
+    /**
+     * @brief Accumulate model data for the given modelId, emitting sceneDataChanged.
+     * @param modelId Key identifying the data model (e.g. "news").
+     * @param data Variant map payload pushed by the server.
+     */
+    void setSceneData(const QString &modelId, const QVariantMap &data);
+    /// @brief Clear all accumulated scene data and emit sceneDataChanged.
+    void clearSceneData();
+    /**
+     * @brief Replace the current scene parameters, emitting sceneParamsChanged if changed.
+     * @param params Variant map of parameters from the SceneChange command.
+     */
+    void setSceneParams(const QVariantMap &params);
+    /**
+     * @brief Set the active scene transition style, emitting sceneTransitionChanged if changed.
+     * @param transition Transition name: "crossfade", "instant", or "slide".
+     */
+    void setSceneTransition(const QString &transition);
 
   signals:
     /// Emitted when connection status changes.
@@ -189,6 +225,14 @@ class ConnectionState : public QObject {
     void backgroundContextChanged();
     /// Emitted when the map focus state changes (set or cleared).
     void mapFocusChanged();
+    /// Emitted when the active scene plugin identifier changes.
+    void activeSceneIdChanged();
+    /// Emitted when scene model data is updated (SceneDataPush or SceneClear).
+    void sceneDataChanged();
+    /// Emitted when scene parameters are updated (SceneChange).
+    void sceneParamsChanged();
+    /// Emitted when the scene transition style changes.
+    void sceneTransitionChanged();
 
   private:
     Status m_status = Disconnected;
@@ -207,6 +251,10 @@ class ConnectionState : public QObject {
     double m_mapFocusLon = 0.0;
     QString m_mapFocusLabel;
     QString m_mapFocusZoom;
+    QString m_activeSceneId = QStringLiteral("globe");
+    QVariantMap m_sceneData;
+    QVariantMap m_sceneParams;
+    QString m_sceneTransition = QStringLiteral("crossfade");
 };
 
 } // namespace pairion::state

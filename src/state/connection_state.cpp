@@ -173,4 +173,53 @@ void ConnectionState::clearMapFocus() {
     }
 }
 
+QString ConnectionState::activeSceneId() const {
+    return m_activeSceneId;
+}
+
+QVariantMap ConnectionState::sceneData() const {
+    return m_sceneData;
+}
+
+QVariantMap ConnectionState::sceneParams() const {
+    return m_sceneParams;
+}
+
+QString ConnectionState::sceneTransition() const {
+    return m_sceneTransition;
+}
+
+void ConnectionState::setActiveSceneId(const QString &sceneId) {
+    if (m_activeSceneId != sceneId) {
+        m_activeSceneId = sceneId;
+        emit activeSceneIdChanged();
+    }
+}
+
+void ConnectionState::setSceneData(const QString &modelId, const QVariantMap &data) {
+    m_sceneData[modelId] = data;
+    emit sceneDataChanged();
+}
+
+void ConnectionState::clearSceneData() {
+    if (!m_sceneData.isEmpty()) {
+        m_sceneData.clear();
+        emit sceneDataChanged();
+    }
+}
+
+void ConnectionState::setSceneParams(const QVariantMap &params) {
+    if (m_sceneParams != params) {
+        m_sceneParams = params;
+        emit sceneParamsChanged();
+    }
+}
+
+void ConnectionState::setSceneTransition(const QString &transition) {
+    if (m_sceneTransition != transition) {
+        m_sceneTransition = transition;
+        emit sceneTransitionChanged();
+    }
+}
+
 } // namespace pairion::state

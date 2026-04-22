@@ -104,6 +104,144 @@ class TestConnectionState : public QObject {
         cs.clearMapFocus();
         QCOMPARE(spy.count(), 0);
     }
+
+    // ── Scene property tests ──────────────────────────────────────
+
+    /// activeSceneId defaults to "globe".
+    void activeSceneIdDefault() {
+        ConnectionState cs;
+        QCOMPARE(cs.activeSceneId(), QStringLiteral("globe"));
+    }
+
+    /// setActiveSceneId stores the new value.
+    void activeSceneIdSetAndGet() {
+        ConnectionState cs;
+        cs.setActiveSceneId(QStringLiteral("space"));
+        QCOMPARE(cs.activeSceneId(), QStringLiteral("space"));
+    }
+
+    /// setActiveSceneId emits activeSceneIdChanged on change.
+    void activeSceneIdEmitsSignal() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::activeSceneIdChanged);
+        cs.setActiveSceneId(QStringLiteral("space"));
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// setActiveSceneId does not emit when value is unchanged.
+    void activeSceneIdNoEmitOnSameValue() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::activeSceneIdChanged);
+        cs.setActiveSceneId(QStringLiteral("globe"));
+        QCOMPARE(spy.count(), 0);
+    }
+
+    /// sceneData is empty by default.
+    void sceneDataDefault() {
+        ConnectionState cs;
+        QVERIFY(cs.sceneData().isEmpty());
+    }
+
+    /// setSceneData stores data under the given modelId and emits sceneDataChanged.
+    void sceneDataSetAndGet() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::sceneDataChanged);
+
+        QVariantMap data;
+        data[QStringLiteral("headline")] = QStringLiteral("Market Volatility");
+        cs.setSceneData(QStringLiteral("news"), data);
+
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(cs.sceneData().contains(QStringLiteral("news")));
+        QVariantMap stored = cs.sceneData()[QStringLiteral("news")].toMap();
+        QCOMPARE(stored[QStringLiteral("headline")].toString(),
+                 QStringLiteral("Market Volatility"));
+    }
+
+    /// setSceneData accumulates multiple model IDs.
+    void sceneDataAccumulates() {
+        ConnectionState cs;
+        QVariantMap d1; d1[QStringLiteral("x")] = 1;
+        QVariantMap d2; d2[QStringLiteral("y")] = 2;
+        cs.setSceneData(QStringLiteral("modelA"), d1);
+        cs.setSceneData(QStringLiteral("modelB"), d2);
+        QCOMPARE(cs.sceneData().size(), 2);
+    }
+
+    /// clearSceneData empties the map and emits sceneDataChanged.
+    void sceneDataClear() {
+        ConnectionState cs;
+        QVariantMap data; data[QStringLiteral("k")] = QStringLiteral("v");
+        cs.setSceneData(QStringLiteral("m"), data);
+
+        QSignalSpy spy(&cs, &ConnectionState::sceneDataChanged);
+        cs.clearSceneData();
+
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(cs.sceneData().isEmpty());
+    }
+
+    /// clearSceneData does not emit when already empty.
+    void sceneDataClearNoEmitWhenEmpty() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::sceneDataChanged);
+        cs.clearSceneData();
+        QCOMPARE(spy.count(), 0);
+    }
+
+    /// sceneParams defaults to an empty map.
+    void sceneParamsDefault() {
+        ConnectionState cs;
+        QVERIFY(cs.sceneParams().isEmpty());
+    }
+
+    /// setSceneParams stores params and emits sceneParamsChanged.
+    void sceneParamsSetAndGet() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::sceneParamsChanged);
+
+        QVariantMap params;
+        params[QStringLiteral("focus")] = QStringLiteral("dallas");
+        cs.setSceneParams(params);
+
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(cs.sceneParams()[QStringLiteral("focus")].toString(),
+                 QStringLiteral("dallas"));
+    }
+
+    /// setSceneParams does not emit when value is unchanged.
+    void sceneParamsNoEmitOnSameValue() {
+        ConnectionState cs;
+        QVariantMap params; params[QStringLiteral("a")] = 1;
+        cs.setSceneParams(params);
+
+        QSignalSpy spy(&cs, &ConnectionState::sceneParamsChanged);
+        cs.setSceneParams(params);
+        QCOMPARE(spy.count(), 0);
+    }
+
+    /// sceneTransition defaults to "crossfade".
+    void sceneTransitionDefault() {
+        ConnectionState cs;
+        QCOMPARE(cs.sceneTransition(), QStringLiteral("crossfade"));
+    }
+
+    /// setSceneTransition stores the value and emits sceneTransitionChanged.
+    void sceneTransitionSetAndGet() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::sceneTransitionChanged);
+        cs.setSceneTransition(QStringLiteral("instant"));
+        QCOMPARE(cs.sceneTransition(), QStringLiteral("instant"));
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// setSceneTransition does not emit when value is unchanged.
+    void sceneTransitionNoEmitOnSameValue() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::sceneTransitionChanged);
+        cs.setSceneTransition(QStringLiteral("crossfade"));
+        QCOMPARE(spy.count(), 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestConnectionState)

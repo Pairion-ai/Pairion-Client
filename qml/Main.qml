@@ -64,21 +64,20 @@ ApplicationWindow {
     Shortcut { sequence: "4"; onActivated: if (root.hudActive) hud.focusPin(3) }
     Shortcut { sequence: "5"; onActivated: if (root.hudActive) hud.focusPin(4) }
 
-    // ── Background context shortcuts (test / demo) ────────────────────────────
-    // "B" cycles through background contexts: earth → space → earth …
-    // In production, ConnectionState.setBackgroundContext() is called by the
-    // server-side WebSocket handler when Jasper detects a topic change.
+    // ── Scene shortcuts (test / demo) ────────────────────────────────────────────
+    // "B" cycles through the built-in scenes: globe → space → globe …
+    // In production, the server sends SceneChange messages to drive scene transitions.
 
-    readonly property var backgroundContexts: ["earth", "space"]
+    readonly property var sceneIds: ["globe", "space"]
 
     Shortcut {
         sequence: "B"
         onActivated: {
             if (!root.hudActive) return
-            var contexts = root.backgroundContexts
-            var current  = ConnectionState.backgroundContext
-            var next     = contexts[(contexts.indexOf(current) + 1) % contexts.length]
-            ConnectionState.setBackgroundContext(next)
+            var ids     = root.sceneIds
+            var current = ConnectionState.activeSceneId
+            var next    = ids[(ids.indexOf(current) + 1) % ids.length]
+            ConnectionState.setActiveSceneId(next)
         }
     }
 }

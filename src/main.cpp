@@ -162,6 +162,8 @@ int main(int argc, char *argv[]) {
     qmlRegisterSingletonInstance("Pairion", 1, 0, "Settings", settings);
 
     QQmlApplicationEngine engine;
+    // Allow scenes to import the PairionScene QML module (qml/PairionScene/qmldir).
+    engine.addImportPath(QStringLiteral("qrc:/qml"));
     engine.load(QUrl(QStringLiteral("qrc:/qml/Main.qml")));
 
     // Model downloader — triggers pipeline start when ready

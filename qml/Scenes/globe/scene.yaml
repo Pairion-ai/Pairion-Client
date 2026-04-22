@@ -1,0 +1,4 @@
+id: globe
+name: Globe
+description: Animated day/night hemisphere map with server-driven focus and news pins.
+entrypoint: GlobeScene.qml

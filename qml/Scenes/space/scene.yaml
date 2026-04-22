@@ -1,0 +1,4 @@
+id: space
+name: Space
+description: Animated deep-space star field with nebula haze and diffraction-spike accent stars.
+entrypoint: SpaceScene.qml

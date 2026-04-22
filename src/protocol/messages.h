@@ -226,11 +226,47 @@ struct MapClear {
     static constexpr const char *kType = "MapClear";
 };
 
+/**
+ * @brief Server command to switch the active HUD scene.
+ *
+ * Transitions the SceneManager to a new scene plugin identified by \p sceneId.
+ * The scene plugin is loaded from qml/Scenes/<sceneId>/<capitalized-sceneId>Scene.qml.
+ * \p params is forwarded as the scene's sceneParams property.
+ * \p transition controls the visual animation: "crossfade" (default), "instant", or "slide".
+ */
+struct SceneChange {
+    static constexpr const char *kType = "SceneChange";
+    QString sceneId;
+    QJsonObject params;
+    QString transition; ///< "crossfade" | "instant" | "slide"
+};
+
+/**
+ * @brief Server push of model data to the active scene.
+ *
+ * The \p data payload is accumulated in ConnectionState::sceneData keyed by \p modelId,
+ * allowing the active scene to bind to live server-pushed content.
+ */
+struct SceneDataPush {
+    static constexpr const char *kType = "SceneDataPush";
+    QString modelId;
+    QJsonObject data;
+};
+
+/**
+ * @brief Server command to clear the active scene and return to the default dashboard.
+ *
+ * Resets accumulated sceneData and transitions to the "dashboard" scene.
+ */
+struct SceneClear {
+    static constexpr const char *kType = "SceneClear";
+};
+
 /// Variant of all inbound text-frame message types.
 using InboundMessage =
     std::variant<SessionOpened, SessionClosed, HeartbeatPong, ErrorMessage, AgentStateChange,
                  TranscriptPartial, TranscriptFinal, LlmTokenStream, ToolCallStarted,
                  ToolCallCompleted, AudioStreamStartOut, AudioStreamEndOut, UnderBreathAck,
-                 MapFocus, MapClear>;
+                 MapFocus, MapClear, SceneChange, SceneDataPush, SceneClear>;
 
 } // namespace pairion::protocol

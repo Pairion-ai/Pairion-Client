@@ -351,6 +351,55 @@ class TestMessageCodec : public QObject {
         QVERIFY(msg != nullptr);
     }
 
+    /// Verify SceneChange deserializes all fields correctly.
+    void deserializeSceneChange() {
+        QJsonObject params;
+        params["focus"] = QStringLiteral("dallas");
+        QJsonObject obj;
+        obj["type"]       = QStringLiteral("SceneChange");
+        obj["sceneId"]    = QStringLiteral("globe");
+        obj["params"]     = params;
+        obj["transition"] = QStringLiteral("crossfade");
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<SceneChange>(&result.value());
+        QVERIFY(msg != nullptr);
+        QCOMPARE(msg->sceneId, QStringLiteral("globe"));
+        QCOMPARE(msg->transition, QStringLiteral("crossfade"));
+        QCOMPARE(msg->params[QStringLiteral("focus")].toString(),
+                 QStringLiteral("dallas"));
+    }
+
+    /// Verify SceneDataPush deserializes modelId and data correctly.
+    void deserializeSceneDataPush() {
+        QJsonObject data;
+        data["headline"] = QStringLiteral("Market Volatility");
+        QJsonObject obj;
+        obj["type"]    = QStringLiteral("SceneDataPush");
+        obj["modelId"] = QStringLiteral("news");
+        obj["data"]    = data;
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<SceneDataPush>(&result.value());
+        QVERIFY(msg != nullptr);
+        QCOMPARE(msg->modelId, QStringLiteral("news"));
+        QCOMPARE(msg->data[QStringLiteral("headline")].toString(),
+                 QStringLiteral("Market Volatility"));
+    }
+
+    /// Verify SceneClear deserializes.
+    void deserializeSceneClear() {
+        QJsonObject obj;
+        obj["type"] = QStringLiteral("SceneClear");
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<SceneClear>(&result.value());
+        QVERIFY(msg != nullptr);
+    }
+
     /// Verify unknown type returns nullopt.
     void deserializeUnknownType() {
         QJsonObject obj;

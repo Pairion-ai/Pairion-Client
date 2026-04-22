@@ -3,6 +3,7 @@
         <file>qml/Main.qml</file>
         <file>qml/Debug/DebugPanel.qml</file>
         <file>qml/HUD/PairionHUD.qml</file>
+        <file>qml/HUD/SceneManager.qml</file>
         <file>qml/HUD/RingSystem.qml</file>
         <file>qml/HUD/FpsCounter.qml</file>
         <file>qml/HUD/HemisphereMap.qml</file>
@@ -10,6 +11,14 @@
         <file>qml/HUD/TopBar.qml</file>
         <file>qml/HUD/DashboardPanels.qml</file>
         <file>qml/HUD/TranscriptStrip.qml</file>
+        <file>qml/PairionScene/qmldir</file>
+        <file>qml/PairionScene/PairionStyle.qml</file>
+        <file>qml/PairionScene/SceneBase.qml</file>
+        <file>qml/PairionScene/HudPanel.qml</file>
+        <file>qml/PairionScene/HudLabel.qml</file>
+        <file>qml/Scenes/globe/GlobeScene.qml</file>
+        <file>qml/Scenes/dashboard/DashboardScene.qml</file>
+        <file>qml/Scenes/space/SpaceScene.qml</file>
         <file>resources/maps/world_map_day.jpg</file>
         <file>resources/maps/world_map_night.jpg</file>
         <file>resources/model_manifest.json</file>

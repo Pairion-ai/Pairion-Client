@@ -398,6 +398,129 @@ class TestWsClientStateMachine : public QObject {
         client.disconnectFromServer();
     }
 
+    /// Verify SceneChange updates activeSceneId, sceneParams, and sceneTransition.
+    void sceneChangeUpdatesConnectionState() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()[QStringLiteral("type")].toString() ==
+                    QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-sc");
+                opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                QJsonObject params;
+                params[QStringLiteral("focus")] = QStringLiteral("dallas");
+                QJsonObject sc;
+                sc[QStringLiteral("type")]       = QStringLiteral("SceneChange");
+                sc[QStringLiteral("sceneId")]    = QStringLiteral("space");
+                sc[QStringLiteral("params")]     = params;
+                sc[QStringLiteral("transition")] = QStringLiteral("instant");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(sc).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy sceneSpy(&connState, &ConnectionState::activeSceneIdChanged);
+        client.connectToServer();
+
+        QVERIFY(sceneSpy.wait(5000));
+        QCOMPARE(connState.activeSceneId(), QStringLiteral("space"));
+        QCOMPARE(connState.sceneTransition(), QStringLiteral("instant"));
+        QCOMPARE(connState.sceneParams()[QStringLiteral("focus")].toString(),
+                 QStringLiteral("dallas"));
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify SceneDataPush accumulates data in ConnectionState::sceneData.
+    void sceneDataPushAccumulatesData() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()[QStringLiteral("type")].toString() ==
+                    QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-sdp");
+                opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                QJsonObject data;
+                data[QStringLiteral("headline")] = QStringLiteral("Market Volatility");
+                QJsonObject sdp;
+                sdp[QStringLiteral("type")]    = QStringLiteral("SceneDataPush");
+                sdp[QStringLiteral("modelId")] = QStringLiteral("news");
+                sdp[QStringLiteral("data")]    = data;
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(sdp).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy dataSpy(&connState, &ConnectionState::sceneDataChanged);
+        client.connectToServer();
+
+        QVERIFY(dataSpy.wait(5000));
+        QVERIFY(connState.sceneData().contains(QStringLiteral("news")));
+        QVariantMap newsData = connState.sceneData()[QStringLiteral("news")].toMap();
+        QCOMPARE(newsData[QStringLiteral("headline")].toString(),
+                 QStringLiteral("Market Volatility"));
+
+        client.disconnectFromServer();
+    }
+
+    /// Verify SceneClear resets scene data and transitions to "dashboard".
+    void sceneClearResetsState() {
+        MockServer server;
+        server.setMessageHandler([](const QString &msg, QWebSocket *client) {
+            QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+            if (doc.object()[QStringLiteral("type")].toString() ==
+                    QLatin1String("DeviceIdentify")) {
+                QJsonObject opened;
+                opened[QStringLiteral("type")]          = QStringLiteral("SessionOpened");
+                opened[QStringLiteral("sessionId")]     = QStringLiteral("s-clr");
+                opened[QStringLiteral("serverVersion")] = QStringLiteral("1.0");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact)));
+
+                // Pre-populate some scene data, then clear it.
+                QJsonObject sdp;
+                sdp[QStringLiteral("type")]    = QStringLiteral("SceneDataPush");
+                sdp[QStringLiteral("modelId")] = QStringLiteral("weather");
+                sdp[QStringLiteral("data")]    = QJsonObject();
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(sdp).toJson(QJsonDocument::Compact)));
+
+                QJsonObject clr;
+                clr[QStringLiteral("type")] = QStringLiteral("SceneClear");
+                client->sendTextMessage(
+                    QString::fromUtf8(QJsonDocument(clr).toJson(QJsonDocument::Compact)));
+            }
+        });
+
+        ConnectionState connState;
+        PairionWebSocketClient client(server.url(), QStringLiteral("d"), QStringLiteral("t"),
+                                      &connState);
+        QSignalSpy sceneSpy(&connState, &ConnectionState::activeSceneIdChanged);
+        client.connectToServer();
+
+        QVERIFY(sceneSpy.wait(5000));
+        QCOMPARE(connState.activeSceneId(), QStringLiteral("dashboard"));
+        QVERIFY(connState.sceneData().isEmpty());
+
+        client.disconnectFromServer();
+    }
+
     /// Verify appendLog stores entries and recentLogs returns them.
     void appendLogAndRecentLogs() {
         ConnectionState connState;

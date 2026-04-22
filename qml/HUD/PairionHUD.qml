@@ -14,12 +14,16 @@ Item {
     function toggleFps() { fpsCounter.visible = !fpsCounter.visible }
 
     /**
-     * @brief Pan + zoom the world map to the pin at the given index.
+     * @brief Pan + zoom the globe to the pin at the given index.
      * Pass -1 to zoom out and resume auto-scroll.
-     * Called by Main.qml test shortcuts today; wired to ConnectionState when
-     * Jarvis news narration is implemented.
+     * Forwards to GlobeScene.activePinIndex via SceneManager.currentScene so the
+     * API remains stable regardless of which scene is currently active.
      */
-    function focusPin(index) { worldMap.activePinIndex = index }
+    function focusPin(index) {
+        var scene = sceneManager.currentScene
+        if (scene && "activePinIndex" in scene)
+            scene.activePinIndex = index
+    }
 
     // ── Background ────────────────────────────────────────────────────────────
 
@@ -28,49 +32,18 @@ Item {
         color: "#070c18"
     }
 
-    // ── Context-driven background (space, etc.) ───────────────────────────────
-    // Sits below the globe layer. When context is "earth" this layer is fully
-    // transparent so the globe dominates. For other contexts it fades in while
-    // the globe fades out.
+    // ── Scene manager — replaces ContextBackground + HemisphereMap ──────────────
+    // Loads and transitions between scene plugins driven by ConnectionState.activeSceneId.
+    // GlobeScene ("globe"), SpaceScene ("space"), and DashboardScene ("dashboard") are the
+    // three built-in plugins. Crossfade and instant transitions are supported.
 
-    ContextBackground {
-        id: contextBg
+    SceneManager {
+        id: sceneManager
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: topBar.bottom
         anchors.bottom: dashboardPanels.top
         anchors.bottomMargin: 4
-        context: ConnectionState.backgroundContext
-    }
-
-    // ── World map (full background) ───────────────────────────────────────────
-
-    HemisphereMap {
-        id: worldMap
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: topBar.bottom
-        anchors.bottom: dashboardPanels.top
-        anchors.bottomMargin: 4
-
-        opacity: ConnectionState.backgroundContext === "earth" ? 1.0 : 0.0
-        Behavior on opacity { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
-
-        // Server-driven map focus: Jarvis focuses the globe via the MapFocus WebSocket message.
-        // Setting serverFocus to null (MapClear) resumes auto-scroll.
-        serverFocus: ConnectionState.mapFocusActive
-                     ? ({ "lat":  ConnectionState.mapFocusLat,
-                          "lon":  ConnectionState.mapFocusLon,
-                          "zoom": ConnectionState.mapFocusZoom })
-                     : null
-
-        pins: [
-            { lat: 32.7767, lon: -96.7970, city: "Dallas",    headline: "Market Volatility" },
-            { lat: 51.5074, lon:  -0.1278, city: "London",    headline: "Climate Summit" },
-            { lat: 35.6762, lon: 139.6503, city: "Tokyo",     headline: "Space Agency Update" },
-            { lat: 40.7128, lon: -74.0060, city: "New York",  headline: "Cyberattack Alert" },
-            { lat: -33.868, lon: 151.2093, city: "Sydney",    headline: "Renewable Energy" }
-        ]
     }
 
     // ── Ring system — visible only while Jarvis is speaking ──────────────────
