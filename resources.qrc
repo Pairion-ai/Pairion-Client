@@ -26,6 +26,7 @@
         <file>qml/Overlays/NewsPinsOverlay.qml</file>
         <file>qml/Overlays/MarkersOverlay.qml</file>
         <file>qml/Overlays/WeatherCurrentOverlay.qml</file>
+        <file>qml/Overlays/WeatherRadarOverlay.qml</file>
         <file>resources/maps/world_map_day.jpg</file>
         <file>resources/maps/world_map_night.jpg</file>
         <file>resources/model_manifest.json</file>

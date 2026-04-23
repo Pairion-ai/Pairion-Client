@@ -65,10 +65,10 @@ ApplicationWindow {
     Shortcut { sequence: "5"; onActivated: if (root.hudActive) hud.focusPin(4) }
 
     // ── Background shortcuts (test / demo) ──────────────────────────────────────
-    // "B" cycles through the built-in backgrounds: globe → space → globe …
+    // "B" cycles through the built-in backgrounds: globe → space → osm → globe …
     // In production, the server sends BackgroundChange messages to drive transitions.
 
-    readonly property var backgroundIds: ["globe", "space"]
+    readonly property var backgroundIds: ["globe", "space", "osm"]
 
     Shortcut {
         sequence: "B"
@@ -78,6 +78,43 @@ ApplicationWindow {
             var current = ConnectionState.activeBackgroundId
             var next    = ids[(ids.indexOf(current) + 1) % ids.length]
             ConnectionState.setActiveBackgroundId(next)
+        }
+    }
+
+    // ── Overlay shortcuts (test / demo) ──────────────────────────────────────
+    // "A" toggles the ADS-B overlay on/off.
+    // "W" toggles the weather radar overlay on/off.
+    // In production, the server sends OverlayAdd / OverlayRemove messages.
+
+    Shortcut {
+        sequence: "A"
+        onActivated: {
+            if (!root.hudActive) return
+            var ids = ConnectionState.activeOverlayIds
+            var active = false
+            for (var i = 0; i < ids.length; i++) {
+                if (ids[i] === "adsb") { active = true; break }
+            }
+            if (active)
+                ConnectionState.removeOverlay("adsb")
+            else
+                ConnectionState.addOverlay("adsb", {})
+        }
+    }
+
+    Shortcut {
+        sequence: "W"
+        onActivated: {
+            if (!root.hudActive) return
+            var ids = ConnectionState.activeOverlayIds
+            var active = false
+            for (var i = 0; i < ids.length; i++) {
+                if (ids[i] === "weather_radar") { active = true; break }
+            }
+            if (active)
+                ConnectionState.removeOverlay("weather_radar")
+            else
+                ConnectionState.addOverlay("weather_radar", {})
         }
     }
 }

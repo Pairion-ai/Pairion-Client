@@ -132,12 +132,12 @@ Item {
     // ── Private helpers ───────────────────────────────────────────
 
     /**
-     * @brief Converts a hyphenated identifier to PascalCase for QML filename lookup.
-     * @param s e.g. "vfr" → "Vfr", "adsb-radar" → "AdsbRadar"
+     * @brief Converts a hyphenated or underscored identifier to PascalCase for QML filename lookup.
+     * @param s e.g. "vfr" → "Vfr", "adsb-radar" → "AdsbRadar", "weather_radar" → "WeatherRadar"
      * @return PascalCase string.
      */
     function _toPascalCase(s) {
-        return s.split("-").map(function(part) {
+        return s.split(/[-_]/).map(function(part) {
             return part.charAt(0).toUpperCase() + part.slice(1)
         }).join("")
     }
