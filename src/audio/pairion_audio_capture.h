@@ -46,6 +46,8 @@ class PairionAudioCapture : public QObject {
     QString configuredDeviceId() const { return m_configuredDeviceId; }
     /// @brief Configured sample rate in Hz.
     int configuredSampleRate() const { return m_configuredSampleRate; }
+    /// @brief Whether the capture is currently active.
+    bool isRunning() const { return m_running; } // LCOV_EXCL_LINE — inline; compiler inlines call sites, definition line not instrumented
 
   public slots:
     /// @brief Start capturing audio from the microphone.

@@ -307,6 +307,58 @@ class TestConnectionState : public QObject {
         QCOMPARE(spy.count(), 0);
     }
 
+    // ── pipelineHealth property tests ─────────────────────────────────────────
+
+    /// pipelineHealth defaults to "connecting".
+    void pipelineHealthDefault() {
+        ConnectionState cs;
+        QCOMPARE(cs.pipelineHealth(), QStringLiteral("connecting"));
+    }
+
+    /// setPipelineHealth stores the new value.
+    void pipelineHealthSetAndGet() {
+        ConnectionState cs;
+        cs.setPipelineHealth(QStringLiteral("ready"));
+        QCOMPARE(cs.pipelineHealth(), QStringLiteral("ready"));
+    }
+
+    /// setPipelineHealth emits pipelineHealthChanged exactly once on change.
+    void pipelineHealthEmitsSignal() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::pipelineHealthChanged);
+        cs.setPipelineHealth(QStringLiteral("ready"));
+        QCOMPARE(spy.count(), 1);
+    }
+
+    /// setPipelineHealth does not emit when value is unchanged.
+    void pipelineHealthNoEmitOnSameValue() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::pipelineHealthChanged);
+        cs.setPipelineHealth(QStringLiteral("connecting"));
+        QCOMPARE(spy.count(), 0);
+    }
+
+    /// setPipelineHealth round-trips through all defined health states.
+    void pipelineHealthRoundTrip() {
+        ConnectionState cs;
+        QSignalSpy spy(&cs, &ConnectionState::pipelineHealthChanged);
+
+        const QStringList states = {QStringLiteral("models_loading"),
+                                    QStringLiteral("initializing"),
+                                    QStringLiteral("ready"),
+                                    QStringLiteral("mic_offline"),
+                                    QStringLiteral("wake_failed"),
+                                    QStringLiteral("server_disconnected"),
+                                    QStringLiteral("models_failed"),
+                                    QStringLiteral("pipeline_error")};
+        for (const auto &state : states) {
+            cs.setPipelineHealth(state);
+        }
+
+        QCOMPARE(spy.count(), states.size());
+        QCOMPARE(cs.pipelineHealth(), QStringLiteral("pipeline_error"));
+    }
+
     /// sceneTransition defaults to "crossfade".
     void sceneTransitionDefault() {
         ConnectionState cs;

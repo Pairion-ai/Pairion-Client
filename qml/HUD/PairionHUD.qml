@@ -103,4 +103,13 @@ Item {
         anchors.topMargin: 8
         anchors.rightMargin: 12
     }
+
+    // ── Pipeline health indicator — bottom-left corner ────────────────────────
+
+    PipelineHealthIndicator {
+        anchors.left: parent.left
+        anchors.bottom: dashboardPanels.top
+        anchors.leftMargin: 16
+        anchors.bottomMargin: 4
+    }
 }

@@ -48,6 +48,7 @@ class ConnectionState : public QObject {
     Q_PROPERTY(QVariantMap backgroundParams READ backgroundParams NOTIFY backgroundParamsChanged)
     Q_PROPERTY(QVariantMap overlayParams READ overlayParams NOTIFY overlayParamsChanged)
     Q_PROPERTY(QString sceneTransition READ sceneTransition NOTIFY sceneTransitionChanged)
+    Q_PROPERTY(QString pipelineHealth READ pipelineHealth NOTIFY pipelineHealthChanged)
 
   public:
     /**
@@ -133,6 +134,13 @@ class ConnectionState : public QObject {
     QVariantMap overlayParams() const;
     /// @brief Transition style from the most recent BackgroundChange command.
     QString sceneTransition() const;
+    /**
+     * @brief Current pipeline health status string for QML binding.
+     *
+     * Values: "connecting", "models_loading", "initializing", "ready",
+     * "mic_offline", "wake_failed", "server_disconnected", "models_failed", "pipeline_error".
+     */
+    QString pipelineHealth() const;
 
   public slots:
     /**
@@ -250,6 +258,12 @@ class ConnectionState : public QObject {
      */
     void setSceneTransition(const QString &transition);
 
+    /**
+     * @brief Set the pipeline health status, emitting pipelineHealthChanged if changed.
+     * @param health Health string (e.g. "ready", "mic_offline", "connecting").
+     */
+    void setPipelineHealth(const QString &health);
+
   signals:
     /// Emitted when connection status changes.
     void statusChanged();
@@ -282,6 +296,8 @@ class ConnectionState : public QObject {
     void overlayParamsChanged();
     /// Emitted when the background transition style changes.
     void sceneTransitionChanged();
+    /// Emitted when the pipeline health status changes.
+    void pipelineHealthChanged();
 
   private:
     Status m_status = Disconnected;
@@ -306,6 +322,7 @@ class ConnectionState : public QObject {
     QVariantMap m_backgroundParams;
     QVariantMap m_overlayParams;
     QString m_sceneTransition = QStringLiteral("crossfade");
+    QString m_pipelineHealth = QStringLiteral("connecting");
 };
 
 } // namespace pairion::state

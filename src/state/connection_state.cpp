@@ -268,4 +268,15 @@ void ConnectionState::setSceneTransition(const QString &transition) {
     }
 }
 
+QString ConnectionState::pipelineHealth() const {
+    return m_pipelineHealth;
+}
+
+void ConnectionState::setPipelineHealth(const QString &health) {
+    if (m_pipelineHealth != health) {
+        m_pipelineHealth = health;
+        emit pipelineHealthChanged();
+    }
+}
+
 } // namespace pairion::state

@@ -23,6 +23,7 @@
 #include "core/model_downloader.h"
 #include "core/onnx_session.h"
 #include "pipeline/audio_session_orchestrator.h"
+#include "pipeline/pipeline_health_monitor.h"
 #include "settings/settings.h"
 #include "state/connection_state.h"
 #include "util/logger.h"
@@ -35,25 +36,31 @@
 #include <QPermissions>
 #include <QQmlApplicationEngine>
 #include <QThread>
+#include <QTimer>
 
 /**
  * @brief Initialize the audio pipeline after mic permission is granted and models are ready.
  *
  * Creates ONNX sessions, wake detector, VAD, orchestrator, and wires signal connections.
- * Called from the allModelsReady callback on the main thread.
+ * Called from the allModelsReady callback on the main thread. If ONNX model loading fails,
+ * the load is retried up to retryCount times with a 1-second delay between attempts.
+ * On exhaustion of retries, pipelineHealth is set to "models_failed".
+ *
+ * @param retryCount Number of remaining retry attempts. Defaults to 3 on the initial call.
  */
 static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudioCapture *capture,
                               pairion::audio::PairionOpusEncoder *encoder,
                               pairion::ws::PairionWebSocketClient *wsClient,
                               pairion::state::ConnectionState *connState,
                               pairion::settings::Settings *settings, QThread *encoderThread,
-                              QThread *inferenceThread) {
+                              QThread *inferenceThread, int retryCount = 3) {
     QString modelDir = pairion::core::ModelDownloader::modelCacheDir();
     pairion::core::OnnxInferenceSession *melSession = nullptr;
     pairion::core::OnnxInferenceSession *embSession = nullptr;
     pairion::core::OnnxInferenceSession *clsSession = nullptr;
     pairion::core::OnnxInferenceSession *vadSession = nullptr;
 
+    // Fix D: retry ONNX model load up to retryCount times with 1-second delay.
     try {
         melSession = new pairion::core::OrtInferenceSession(
             (modelDir + QStringLiteral("/melspectrogram.onnx")).toStdString());
@@ -64,9 +71,28 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
         vadSession = new pairion::core::OrtInferenceSession(
             (modelDir + QStringLiteral("/silero_vad.onnx")).toStdString());
     } catch (const std::exception &e) {
-        qCritical() << "Failed to load ONNX models:" << e.what();
-        connState->appendLog(QStringLiteral("[ERROR] Failed to load ONNX models: %1")
-                                 .arg(QString::fromUtf8(e.what())));
+        qCritical() << "Failed to load ONNX models (attempt" << (4 - retryCount) << "):"
+                    << e.what();
+        connState->appendLog(
+            QStringLiteral("[ERROR] Failed to load ONNX models: %1").arg(QString::fromUtf8(e.what())));
+        if (retryCount > 0) {
+            connState->appendLog(
+                QStringLiteral("[INFO] Retrying ONNX model load in 1 second (%1 attempts left)...")
+                    .arg(retryCount));
+            QTimer::singleShot(
+                1000, app,
+                [app, capture, encoder, wsClient, connState, settings, encoderThread,
+                 inferenceThread, retryCount]() {
+                    initAudioPipeline(app, capture, encoder, wsClient, connState, settings,
+                                      encoderThread, inferenceThread, retryCount - 1);
+                });
+        } else {
+            qCritical() << "ONNX model load failed after all retries — pipeline offline";
+            connState->appendLog(
+                QStringLiteral("[CRITICAL] ONNX model load failed after all retries. "
+                               "Delete the model cache and restart."));
+            connState->setPipelineHealth(QStringLiteral("models_failed"));
+        }
         return;
     }
 
@@ -94,8 +120,27 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
     QObject::connect(capture, &pairion::audio::PairionAudioCapture::audioFrameAvailable, vad,
                      &pairion::vad::SileroVad::processPcmFrame);
 
+    // Fix G: start inference thread and verify it is running before proceeding.
     inferenceThread->start();
+    if (!inferenceThread->isRunning()) {
+        qCritical() << "InferenceThread failed to start — wake word and VAD offline";
+        connState->appendLog(
+            QStringLiteral("[CRITICAL] Inference thread failed to start — microphone pipeline "
+                           "offline. Restart the application."));
+        connState->setPipelineHealth(QStringLiteral("pipeline_error"));
+        return;
+    }
+
+    // Fix G: start encoder thread and verify it is running.
     encoderThread->start();
+    if (!encoderThread->isRunning()) {
+        qCritical() << "EncoderThread failed to start — audio encoding offline";
+        connState->appendLog(
+            QStringLiteral("[CRITICAL] Encoder thread failed to start — microphone pipeline "
+                           "offline. Restart the application."));
+        connState->setPipelineHealth(QStringLiteral("pipeline_error"));
+        return;
+    }
 
     // Fix 5: Detect worker thread crashes — log critical and surface to the UI.
     QObject::connect(inferenceThread, &QThread::finished, app, [connState]() {
@@ -123,11 +168,18 @@ static void initAudioPipeline(QGuiApplication *app, pairion::audio::PairionAudio
                              QStringLiteral("[ERROR] Microphone: %1").arg(reason));
                      });
 
-    // Warm up the wake detector on the inference thread (not main thread)
+    // Fix H: InferenceThread is verified running (Fix G). Queue warmup safely.
     QMetaObject::invokeMethod(wakeDetector, "warmup", Qt::QueuedConnection);
 
     capture->start();
     orchestrator->startListening();
+
+    // Pipeline is fully operational — update health and start the health monitor.
+    connState->setPipelineHealth(QStringLiteral("ready"));
+
+    auto *healthMonitor = new pairion::pipeline::PipelineHealthMonitor(
+        wsClient, capture, encoderThread, inferenceThread, orchestrator, connState, app);
+    healthMonitor->start();
 
     qInfo() << "Audio pipeline started";
 }
@@ -223,6 +275,7 @@ int main(int argc, char *argv[]) {
             connState->appendLog(
                 QStringLiteral("[WARN] Microphone access denied. Grant access in System Settings > "
                                "Privacy & Security > Microphone."));
+            connState->setPipelineHealth(QStringLiteral("mic_offline"));
         }
     };
 
@@ -241,10 +294,18 @@ int main(int argc, char *argv[]) {
         break;
     }
 
+    // Fix B: signal connected before connectToServer() to ensure no sessionOpened is missed.
+    QObject::connect(wsClient, &pairion::ws::PairionWebSocketClient::sessionOpened, modelDownloader,
+                     [modelDownloader, connState]() {
+                         connState->setPipelineHealth(QStringLiteral("models_loading"));
+                         modelDownloader->checkAndDownload();
+                     });
+
     QObject::connect(modelDownloader, &pairion::core::ModelDownloader::allModelsReady, &app,
-                     [&modelsReady, &tryStartPipeline]() {
+                     [&modelsReady, &tryStartPipeline, connState]() {
                          qInfo() << "All models ready";
                          modelsReady = true;
+                         connState->setPipelineHealth(QStringLiteral("initializing"));
                          tryStartPipeline();
                      });
 
@@ -255,10 +316,8 @@ int main(int argc, char *argv[]) {
                              QStringLiteral("[ERROR] Model download: %1").arg(msg));
                      });
 
-    // WebSocket connects regardless of mic permission — debug panel shows Connected
-    QObject::connect(wsClient, &pairion::ws::PairionWebSocketClient::sessionOpened, modelDownloader,
-                     [modelDownloader]() { modelDownloader->checkAndDownload(); });
-
+    // WebSocket connects regardless of mic permission — debug panel shows Connected.
+    // pipelineHealth starts at "connecting" (ConnectionState default).
     wsClient->connectToServer();
 
     int result = app.exec();

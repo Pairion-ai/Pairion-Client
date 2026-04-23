@@ -3,6 +3,7 @@
         <file>qml/Main.qml</file>
         <file>qml/Debug/DebugPanel.qml</file>
         <file>qml/HUD/PairionHUD.qml</file>
+        <file>qml/HUD/PipelineHealthIndicator.qml</file>
         <file>qml/HUD/LayerManager.qml</file>
         <file>qml/HUD/RingSystem.qml</file>
         <file>qml/HUD/FpsCounter.qml</file>

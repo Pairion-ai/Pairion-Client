@@ -51,6 +51,7 @@ add_library(pairion_core STATIC
     src/vad/silero_vad.cpp
     # pipeline
     src/pipeline/audio_session_orchestrator.cpp
+    src/pipeline/pipeline_health_monitor.cpp
     # ws
     src/ws/pairion_websocket_client.cpp
     # util
@@ -188,6 +189,13 @@ add_test(NAME tst_constants COMMAND tst_constants)
 add_executable(tst_connection_state test/tst_connection_state.cpp)
 target_link_libraries(tst_connection_state PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_connection_state COMMAND tst_connection_state)
+
+add_executable(tst_pipeline_health_monitor
+    test/tst_pipeline_health_monitor.cpp
+    test/mock_server.cpp
+)
+target_link_libraries(tst_pipeline_health_monitor PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_pipeline_health_monitor COMMAND tst_pipeline_health_monitor)
 
 # --------------------------------------------------------------------------
 # Coverage target
