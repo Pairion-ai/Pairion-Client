@@ -20,6 +20,7 @@
         <file>qml/Backgrounds/GlobeBackground.qml</file>
         <file>qml/Backgrounds/SpaceBackground.qml</file>
         <file>qml/Backgrounds/DarkBackground.qml</file>
+        <file>qml/Backgrounds/OsmBackground.qml</file>
         <file>qml/Backgrounds/VfrBackground.qml</file>
         <file>qml/Overlays/AdsbOverlay.qml</file>
         <file>qml/Overlays/NewsPinsOverlay.qml</file>
