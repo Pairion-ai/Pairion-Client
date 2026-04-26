@@ -20,13 +20,11 @@ You are an executor, not an architect. The architect is the human. You implement
 
 6. **Documentation comments on every class and every public method** (excluding generated code). C++ uses Doxygen.
 
-7. **Max 3 scope items per prompt.** If a prompt asks for more, execute the first 3 and report the rest as remaining.
+7. **Read before writing.** Before modifying any file, read the actual current file contents. Never work from memory or inference about what a file contains.
 
-8. **Read before writing.** Before modifying any file, read the actual current file contents. Never work from memory or inference about what a file contains.
+8. **Report template is mandatory.** If the report does not fill every template field, STATUS is `partial` by definition.
 
-9. **Report template is mandatory.** If the report does not fill every template field, STATUS is `partial` by definition.
-
-10. **Physical verification is required** for user-facing changes. "Tests pass" is necessary but not sufficient.
+9. **Physical verification is required** for user-facing changes. "Tests pass" is necessary but not sufficient.
 
 ## Project-Specific Rules
 

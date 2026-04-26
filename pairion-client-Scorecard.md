@@ -1,105 +1,119 @@
-# Pairion-Client — Quality Scorecard
+# pairion-client — Quality Scorecard
 
-**Generated:** 2026-04-21T22:45:08Z
+**Generated:** 2026-04-26T15:25:52Z
 **Branch:** main
-**Commit:** 05b16cc4985bf7ff16ce7688cb6f8d360db40693 revert: remove conversation mode — VAD loopback incompatible without AEC (PC-CONV-revert)
+**Commit:** 666d43113ab47676eb62002e1fe16d6697f4982e feat: weather radar overlay — RainViewer animated tiles (PC-WXRADAR-001)
 
 ---
 
-## Summary Table
+## Documentation Coverage
 
-| Category | Score | Max | Grade |
+**Standard:** C++ uses Doxygen `/** */` or `///`. QML uses `/** @file @brief */`.
+
+| Check | Result | Score |
+|---|---|---|
+| C++ classes have @brief Doxygen | 184 @brief/@file entries across 55 classes — PASS | 2/2 |
+| Public C++ methods have doc comments | 272 of 273 method lines have `///` or `/** */` — PASS (1 inline LCOV exclusion) | 2/2 |
+| QML components have @file/@brief | 187 doc comment hits across 28 QML files — PASS | 2/2 |
+| Abstract interfaces documented | OnnxInferenceSession interface fully documented — PASS | 2/2 |
+| Signal/slot documentation | All signals and slots documented in .h files — PASS | 2/2 |
+
+**Documentation Score: 10/10 (100%)**
+
+---
+
+## Test Quality
+
+| Check | Result | Score |
+|---|---|---|
+| Test files exist | 17 test executables — PASS | 2/2 |
+| All C++ modules covered | 17 modules tested: orchestrator, binary frame, connection state, constants, device identity, inbound playback, integration, log batching, message codec, model downloader, opus codec, health monitor, ring buffer, settings, silero vad, wake detector, WS client state machine — PASS | 2/2 |
+| Test infrastructure | Mock server + mock ONNX session for isolation; QtTest framework — PASS | 2/2 |
+| Integration test exists | `tst_integration.cpp` covers full WS client with mock server — PASS | 2/2 |
+| Coverage target configured | PAIRION_COVERAGE_THRESHOLD=100, LCOV enforced via cmake/check_coverage.cmake — PASS (target enforced at build time) | 2/2 |
+
+**Test Quality Score: 10/10 (100%)**
+
+**Note:** Coverage number cannot be verified without running the build + coverage target (no build artifact present). Coverage target configuration is correct and threshold=100 is enforced.
+
+---
+
+## Technical Debt
+
+| Check | Result | Score |
+|---|---|---|
+| No CRITICAL stubs in implemented overlays | 3 stub QML overlays (WeatherCurrent, Markers, NewsPins) — FAIL | 0/2 |
+| No hardcoded placeholder data | DashboardPanels has hardcoded news/inbox/todo content — FAIL | 0/2 |
+| No hardcoded server URLs | kDefaultServerUrl/kDefaultRestBaseUrl hardcoded to localhost — LOW risk but noted | 1/2 |
+| No dead/legacy code accumulation | PairionScene/ and Scenes/ legacy QML directories remain — MINOR | 1/2 |
+| No TODO/FIXME in production code | "TODO" label in DashboardPanels.qml:87 — FAIL | 0/2 |
+
+**Technical Debt Score: 2/10 (20%)**
+
+BLOCKING: 3 stub overlays + 1 TODO label + hardcoded dashboard data. These represent declared features with zero implementation.
+
+---
+
+## Code Quality
+
+| Check | Result | Score |
+|---|---|---|
+| Strict compiler warnings enabled | -Wall -Wextra -Wpedantic -Werror on all presets — PASS | 2/2 |
+| C++20 standard enforced | CMAKE_CXX_STANDARD 20, CMAKE_CXX_STANDARD_REQUIRED ON — PASS | 2/2 |
+| RAII / Qt ownership model correct | All objects parented correctly; no bare new without parent or RAII — PASS | 2/2 |
+| Threading model correct | Main thread: QAudioSource, QML, WS; EncoderThread: Opus; InferenceThread: Wake+VAD — correct moveToThread usage | 2/2 |
+| Error handling complete | All signal paths have error handlers; no unhandled exceptions in hot paths | 1/2 |
+
+**Code Quality Score: 9/10 (90%)**
+
+---
+
+## Security / Infrastructure
+
+| Check | Result | Score |
+|---|---|---|
+| No hardcoded secrets | PASS — no passwords, API keys, or tokens in source | 2/2 |
+| Model integrity verification | PASS — SHA-256 verification before ONNX model use | 2/2 |
+| Credential storage | PASS — QSettings (platform-native secure storage) | 2/2 |
+| Plaintext WS connection | WARNING — ws:// (development only; production needs wss://) | 1/2 |
+| No CI/CD pipeline | FAIL — no automated quality gates | 0/2 |
+
+**Security/Infrastructure Score: 7/10 (70%)**
+
+---
+
+## Scorecard Summary
+
+| Category | Score | Max | % |
 |---|---|---|---|
-| Documentation | 20 | 20 | A |
-| Code Quality | 22 | 22 | A |
-| Test Quality | 24 | 24 | A |
-| Security | 14 | 20 | B |
-| **TOTAL** | **80** | **86** | **A-** |
+| Documentation | 10 | 10 | 100% |
+| Test Quality | 10 | 10 | 100% |
+| Technical Debt | 2 | 10 | 20% |
+| Code Quality | 9 | 10 | 90% |
+| Security/Infrastructure | 7 | 10 | 70% |
+| **OVERALL** | **38** | **50** | **76% (C+)** |
 
 ---
 
-## Documentation (20/20)
+## BLOCKING Issues
 
-| Check | Result | Score |
-|---|---|---|
-| DOC-01 Doxygen on all header files | 19/19 headers documented | 10/10 |
-| DOC-02 Documented public methods | Spot check: 0 undocumented public method signatures found | 5/5 |
-| DOC-03 File-level @file / @brief present | All header files have @file + purpose docblock | 5/5 |
+1. **`qml/Overlays/WeatherCurrentOverlay.qml`** — STUB: zero rendering implementation
+2. **`qml/Overlays/MarkersOverlay.qml`** — STUB: zero rendering implementation
+3. **`qml/Overlays/NewsPinsOverlay.qml`** — STUB: zero rendering implementation
+4. **`qml/HUD/DashboardPanels.qml:87`** — TODO label + all panel data is hardcoded placeholder
 
-**Detail:**
-- Every .h file in src/ has a file-level Doxygen docblock.
-- Every public method in every class has a Doxygen `///` or `/** */` comment.
-- QML files have JSDoc-style `/** @file */` blocks.
+## Non-Blocking Observations
 
----
+1. Legacy `qml/PairionScene/` and `qml/Scenes/` directories — consider removing or clearly documenting as deprecated
+2. No CI/CD — consider adding GitHub Actions for build + test + coverage enforcement
+3. Server URL hardcoded to localhost — consider making runtime-configurable for production deployment
 
-## Code Quality (22/22)
+## Verification Commands
 
-| Check | Result | Score |
-|---|---|---|
-| CQ-01 All logging via Q_LOGGING_CATEGORY | 63 uses; zero std::cout/printf | 5/5 |
-| CQ-02 No raw cout/printf in production code | 0 occurrences | 5/5 |
-| CQ-03 No TODO/FIXME/HACK | 0 occurrences in src/ | 4/4 |
-| CQ-04 C++20 features used | 94 uses (constexpr, [[nodiscard]], etc.) | 4/4 |
-| CQ-05 Q_OBJECT properly declared | 13 QObject subclasses, all have Q_OBJECT | 4/4 |
-
-**Detail:**
-- Centralized Logger installs Qt message handler — all qDebug/qInfo/qWarning flow through it.
-- All modules use named logging categories (pairion.pipeline, pairion.ws, pairion.audio.*, etc.).
-- Heavy use of `constexpr` for all compile-time constants.
-- Code is clean — zero technical debt markers.
-
----
-
-## Test Quality (24/24)
-
-| Check | Result | Score |
-|---|---|---|
-| TST-01 Test files | 16 test files | 6/6 |
-| TST-02 Test slots | ~148 individual test cases | 6/6 |
-| TST-03 Mock classes | 2 (MockOnnxSession, MockServer) | 4/4 |
-| TST-04 Coverage target configured | 11 references to coverage/lcov in CMake | 4/4 |
-| TST-05 Coverage = 100% | 967/967 lines = 100.0% ✓ | 4/4 |
-
-**Detail:**
-- 100% line coverage enforced by build system — coverage target fails if below threshold.
-- MockOnnxSession enables full unit testing of wake/VAD without real ONNX models.
-- MockServer enables full protocol/integration testing without Pairion-Server running.
-- All 16 test targets registered with CTest.
-
----
-
-## Security (14/20)
-
-| Check | Result | Score |
-|---|---|---|
-| SEC-01 WebSocket uses TLS | FAIL — ws:// and http:// only | 0/5 |
-| SEC-02 No hardcoded credentials | PASS — 0 credentials in source | 5/5 |
-| SEC-03 Input sanitization for WebSocket messages | PASS — EnvelopeCodec uses QJsonDocument with null checks; BinaryCodec validates frame length | 5/5 |
-| SEC-04 ONNX model integrity | PASS — SHA-256 verification before use | 4/5 |
-
-**Detail:**
-- SEC-01: Plain-text WebSocket is a known issue (acceptable for localhost dev). Production requires wss:// upgrade.
-- Device credentials (UUID + bearer token) stored in QSettings — macOS Keychain not used.
-- All JSON parsing guarded against malformed input.
-
----
-
-## Blocking Issues
-
-| # | Severity | Description |
-|---|---|---|
-| 1 | HIGH | Conversation mode blocked: VAD mic loopback without AEC. Mic must be muted during TTS playback. Cannot implement always-on conversation mode until AEC is available. |
-| 2 | MEDIUM | No TLS — ws:// acceptable for localhost; required upgrade before any network deployment. |
-| 3 | LOW | No CI/CD pipeline — no automated test execution on push. |
-| 4 | LOW | Server URL and REST URL are compile-time constants — no runtime override. |
-
----
-
-## Observations (Not Blocking)
-
-- `src/hud/README.md` exists as a placeholder; HUD C++ code is absent (HUD is pure QML).
-- `PAIRION_CLIENT_NATIVE_TESTS` option allows tests with real ONNX models — not exercised in standard CI.
-- `appendLogTrimsAt50()` test in tst_ws_client_state_machine implies log trim threshold may be 50, but ConnectionState advertises "up to 10". Needs investigation.
-- Coverage exclusion for `onStreamingTimeout()` is correctly marked with `LCOV_EXCL_START/STOP`.
+```bash
+cmake --preset macos-arm64-debug
+cmake --build --preset macos-arm64-debug
+ctest --preset macos-arm64-debug
+cmake --build --preset macos-arm64-debug --target coverage
+```
 
