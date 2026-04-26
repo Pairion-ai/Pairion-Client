@@ -44,15 +44,13 @@ _Updated: 2026-04-26 — PC-STUB-001_
 
 | Check | Result | Score |
 |---|---|---|
-| No CRITICAL stubs in implemented overlays | WeatherCurrentOverlay.qml remains (ships in PX-WXCUR-001); MarkersOverlay and NewsPinsOverlay deleted — 1 remaining | 1/2 |
+| No CRITICAL stubs in implemented overlays | WeatherCurrentOverlay.qml implemented in PX-WXCUR-001 — no critical stubs remaining in active overlays — PASS | 2/2 |
 | No hardcoded placeholder data | DashboardPanels placeholder data is intentional — panels become data-driven via SceneDataPush in M3+ milestones; comment block added to file documenting this — ACKNOWLEDGED | 1/2 |
 | No hardcoded server URLs | kDefaultServerUrl/kDefaultRestBaseUrl hardcoded to localhost — development only; noted | 1/2 |
 | No dead/legacy code accumulation | Scenes/ directory deleted; HudLabel.qml + HudPanel.qml deleted (zero references); PairionScene/ active components retained (PairionStyle, BackgroundBase, OverlayBase actively imported) — PASS | 2/2 |
 | No TODO/FIXME in production code | "TODO" panel header replaced with "TASKS" in DashboardPanels.qml — PASS | 2/2 |
 
-**Technical Debt Score: 7/10 (70%)**
-
-REMAINING BLOCKING: WeatherCurrentOverlay.qml — stub overlay (ships in PX-WXCUR-001).
+**Technical Debt Score: 8/10 (80%)**
 
 ---
 
@@ -90,16 +88,16 @@ REMAINING BLOCKING: WeatherCurrentOverlay.qml — stub overlay (ships in PX-WXCU
 |---|---|---|---|
 | Documentation | 10 | 10 | 100% |
 | Test Quality | 10 | 10 | 100% |
-| Technical Debt | 7 | 10 | 70% |
+| Technical Debt | 8 | 10 | 80% |
 | Code Quality | 9 | 10 | 90% |
 | Security/Infrastructure | 7 | 10 | 70% |
-| **OVERALL** | **43** | **50** | **86% (B)** |
+| **OVERALL** | **44** | **50** | **88% (B)** |
 
 ---
 
 ## BLOCKING Issues
 
-1. **`qml/Overlays/WeatherCurrentOverlay.qml`** — STUB: zero rendering implementation (ships in PX-WXCUR-001)
+None. All previously blocking stubs resolved.
 
 ## Non-Blocking Observations
 
