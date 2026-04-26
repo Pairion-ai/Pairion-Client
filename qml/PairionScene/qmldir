@@ -2,5 +2,3 @@ module PairionScene
 singleton PairionStyle 1.0 PairionStyle.qml
 BackgroundBase 1.0 BackgroundBase.qml
 OverlayBase 1.0 OverlayBase.qml
-HudPanel 1.0 HudPanel.qml
-HudLabel 1.0 HudLabel.qml

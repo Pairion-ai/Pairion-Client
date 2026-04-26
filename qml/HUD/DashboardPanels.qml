@@ -1,6 +1,14 @@
 /**
  * @file DashboardPanels.qml
- * @brief Four side-by-side data panels: News, Inbox, Todo, Homestead Status.
+ * @brief Four side-by-side data panels: News, Inbox, Tasks, Homestead Status.
+ *
+ * Panel content is intentional placeholder data. Each panel will become data-driven
+ * when its corresponding server-side data adapter ships and begins pushing live content
+ * via SceneDataPush (M3+ milestones):
+ *   - News:      modelId="news"      — live headlines from the news data adapter
+ *   - Inbox:     modelId="inbox"     — email/notification feed from the inbox adapter
+ *   - Tasks:     modelId="tasks"     — task list from the tasks adapter
+ *   - Homestead: modelId="homestead" — sensor/status feed from the homestead adapter
  */
 import QtQuick
 
@@ -70,7 +78,7 @@ Item {
             }
         }
 
-        // ── Panel C: Todo ─────────────────────────────────────────────────────
+        // ── Panel C: Tasks ────────────────────────────────────────────────────
         Rectangle {
             width: (parent.width - 30) / 4
             height: parent.height
@@ -84,7 +92,7 @@ Item {
                 anchors.margins: 8
                 spacing: 6
 
-                Text { text: "TODO"; color: root.cyan; opacity: 0.7; font.pixelSize: 10; font.letterSpacing: 1.5; font.family: root.mono }
+                Text { text: "TASKS"; color: root.cyan; opacity: 0.7; font.pixelSize: 10; font.letterSpacing: 1.5; font.family: root.mono }
                 Rectangle { width: parent.width; height: 1; color: root.cyan; opacity: 0.2 }
                 Text { text: "\u2611 Review quarterly report"; color: root.dim; opacity: 0.35; font.pixelSize: 10; font.family: root.mono; font.strikeout: true; width: parent.width }
                 Text { text: "\u2610 Optimize security protocols"; color: root.dim; font.pixelSize: 10; font.family: root.mono; width: parent.width }

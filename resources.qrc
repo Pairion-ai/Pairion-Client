@@ -15,16 +15,12 @@
         <file>qml/PairionScene/PairionStyle.qml</file>
         <file>qml/PairionScene/BackgroundBase.qml</file>
         <file>qml/PairionScene/OverlayBase.qml</file>
-        <file>qml/PairionScene/HudPanel.qml</file>
-        <file>qml/PairionScene/HudLabel.qml</file>
         <file>qml/Backgrounds/GlobeBackground.qml</file>
         <file>qml/Backgrounds/SpaceBackground.qml</file>
         <file>qml/Backgrounds/DarkBackground.qml</file>
         <file>qml/Backgrounds/OsmBackground.qml</file>
         <file>qml/Backgrounds/VfrBackground.qml</file>
         <file>qml/Overlays/AdsbOverlay.qml</file>
-        <file>qml/Overlays/NewsPinsOverlay.qml</file>
-        <file>qml/Overlays/MarkersOverlay.qml</file>
         <file>qml/Overlays/WeatherCurrentOverlay.qml</file>
         <file>qml/Overlays/WeatherRadarOverlay.qml</file>
         <file>resources/maps/world_map_day.jpg</file>

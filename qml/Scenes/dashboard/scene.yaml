@@ -1,4 +1,0 @@
-id: dashboard
-name: Dashboard
-description: Neutral dark background fallback. Shown after SceneClear or on load errors.
-entrypoint: DashboardScene.qml

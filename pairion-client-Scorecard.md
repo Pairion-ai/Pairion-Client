@@ -40,17 +40,19 @@
 
 ## Technical Debt
 
+_Updated: 2026-04-26 — PC-STUB-001_
+
 | Check | Result | Score |
 |---|---|---|
-| No CRITICAL stubs in implemented overlays | 3 stub QML overlays (WeatherCurrent, Markers, NewsPins) — FAIL | 0/2 |
-| No hardcoded placeholder data | DashboardPanels has hardcoded news/inbox/todo content — FAIL | 0/2 |
-| No hardcoded server URLs | kDefaultServerUrl/kDefaultRestBaseUrl hardcoded to localhost — LOW risk but noted | 1/2 |
-| No dead/legacy code accumulation | PairionScene/ and Scenes/ legacy QML directories remain — MINOR | 1/2 |
-| No TODO/FIXME in production code | "TODO" label in DashboardPanels.qml:87 — FAIL | 0/2 |
+| No CRITICAL stubs in implemented overlays | WeatherCurrentOverlay.qml remains (ships in PX-WXCUR-001); MarkersOverlay and NewsPinsOverlay deleted — 1 remaining | 1/2 |
+| No hardcoded placeholder data | DashboardPanels placeholder data is intentional — panels become data-driven via SceneDataPush in M3+ milestones; comment block added to file documenting this — ACKNOWLEDGED | 1/2 |
+| No hardcoded server URLs | kDefaultServerUrl/kDefaultRestBaseUrl hardcoded to localhost — development only; noted | 1/2 |
+| No dead/legacy code accumulation | Scenes/ directory deleted; HudLabel.qml + HudPanel.qml deleted (zero references); PairionScene/ active components retained (PairionStyle, BackgroundBase, OverlayBase actively imported) — PASS | 2/2 |
+| No TODO/FIXME in production code | "TODO" panel header replaced with "TASKS" in DashboardPanels.qml — PASS | 2/2 |
 
-**Technical Debt Score: 2/10 (20%)**
+**Technical Debt Score: 7/10 (70%)**
 
-BLOCKING: 3 stub overlays + 1 TODO label + hardcoded dashboard data. These represent declared features with zero implementation.
+REMAINING BLOCKING: WeatherCurrentOverlay.qml — stub overlay (ships in PX-WXCUR-001).
 
 ---
 
@@ -88,25 +90,21 @@ BLOCKING: 3 stub overlays + 1 TODO label + hardcoded dashboard data. These repre
 |---|---|---|---|
 | Documentation | 10 | 10 | 100% |
 | Test Quality | 10 | 10 | 100% |
-| Technical Debt | 2 | 10 | 20% |
+| Technical Debt | 7 | 10 | 70% |
 | Code Quality | 9 | 10 | 90% |
 | Security/Infrastructure | 7 | 10 | 70% |
-| **OVERALL** | **38** | **50** | **76% (C+)** |
+| **OVERALL** | **43** | **50** | **86% (B)** |
 
 ---
 
 ## BLOCKING Issues
 
-1. **`qml/Overlays/WeatherCurrentOverlay.qml`** — STUB: zero rendering implementation
-2. **`qml/Overlays/MarkersOverlay.qml`** — STUB: zero rendering implementation
-3. **`qml/Overlays/NewsPinsOverlay.qml`** — STUB: zero rendering implementation
-4. **`qml/HUD/DashboardPanels.qml:87`** — TODO label + all panel data is hardcoded placeholder
+1. **`qml/Overlays/WeatherCurrentOverlay.qml`** — STUB: zero rendering implementation (ships in PX-WXCUR-001)
 
 ## Non-Blocking Observations
 
-1. Legacy `qml/PairionScene/` and `qml/Scenes/` directories — consider removing or clearly documenting as deprecated
-2. No CI/CD — consider adding GitHub Actions for build + test + coverage enforcement
-3. Server URL hardcoded to localhost — consider making runtime-configurable for production deployment
+1. No CI/CD — consider adding GitHub Actions for build + test + coverage enforcement
+2. Server URL hardcoded to localhost — consider making runtime-configurable for production deployment
 
 ## Verification Commands
 
