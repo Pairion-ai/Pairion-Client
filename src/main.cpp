@@ -22,6 +22,8 @@
 #include "core/device_identity.h"
 #include "core/model_downloader.h"
 #include "core/onnx_session.h"
+#include "memory/memory_browser_model.h"
+#include "memory/memory_client.h"
 #include "pipeline/audio_session_orchestrator.h"
 #include "pipeline/pipeline_health_monitor.h"
 #include "settings/settings.h"
@@ -235,9 +237,15 @@ int main(int argc, char *argv[]) {
     auto *inferenceThread = new QThread(&app);
     inferenceThread->setObjectName(QStringLiteral("InferenceThread"));
 
+    // Memory browser
+    auto *memClient = new pairion::memory::MemoryClient(
+        nam, QString::fromUtf8(pairion::kDefaultRestBaseUrl), &app);
+    auto *memModel = new pairion::memory::MemoryBrowserModel(memClient, &app);
+
     // QML singletons
     qmlRegisterSingletonInstance("Pairion", 1, 0, "ConnectionState", connState);
     qmlRegisterSingletonInstance("Pairion", 1, 0, "Settings", settings);
+    qmlRegisterSingletonInstance("Pairion", 1, 0, "MemoryBrowserModel", memModel);
 
     QQmlApplicationEngine engine;
     // Allow scenes to import the PairionScene QML module (qml/PairionScene/qmldir).

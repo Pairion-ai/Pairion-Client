@@ -48,6 +48,11 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "M"
+        onActivated: if (root.hudActive) hud.memoryBrowserVisible = !hud.memoryBrowserVisible
+    }
+
+    Shortcut {
         sequence: "Escape"
         onActivated: Qt.quit()
     }

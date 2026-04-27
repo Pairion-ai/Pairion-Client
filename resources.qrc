@@ -10,6 +10,7 @@
         <file>qml/HUD/HemisphereMap.qml</file>
         <file>qml/HUD/TopBar.qml</file>
         <file>qml/HUD/DashboardPanels.qml</file>
+        <file>qml/HUD/MemoryBrowser.qml</file>
         <file>qml/HUD/TranscriptStrip.qml</file>
         <file>qml/PairionScene/qmldir</file>
         <file>qml/PairionScene/PairionStyle.qml</file>

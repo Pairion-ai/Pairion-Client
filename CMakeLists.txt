@@ -56,6 +56,9 @@ add_library(pairion_core STATIC
     src/ws/pairion_websocket_client.cpp
     # util
     src/util/logger.cpp
+    # memory
+    src/memory/memory_client.cpp
+    src/memory/memory_browser_model.cpp
 )
 target_include_directories(pairion_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -196,6 +199,15 @@ add_executable(tst_pipeline_health_monitor
 )
 target_link_libraries(tst_pipeline_health_monitor PRIVATE pairion_core Qt6::Test)
 add_test(NAME tst_pipeline_health_monitor COMMAND tst_pipeline_health_monitor)
+
+# M2 memory browser tests
+add_executable(tst_memory_client test/tst_memory_client.cpp)
+target_link_libraries(tst_memory_client PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_memory_client COMMAND tst_memory_client)
+
+add_executable(tst_memory_browser_model test/tst_memory_browser_model.cpp)
+target_link_libraries(tst_memory_browser_model PRIVATE pairion_core Qt6::Test)
+add_test(NAME tst_memory_browser_model COMMAND tst_memory_browser_model)
 
 # --------------------------------------------------------------------------
 # Coverage target

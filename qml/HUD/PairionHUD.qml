@@ -14,6 +14,12 @@ Item {
     function toggleFps() { fpsCounter.visible = !fpsCounter.visible }
 
     /**
+     * @brief Controls visibility of the memory browser slide-in panel.
+     * Toggled by the M keyboard shortcut in Main.qml.
+     */
+    property bool memoryBrowserVisible: false
+
+    /**
      * @brief Pan + zoom the globe to the pin at the given index.
      * Pass -1 to zoom out and resume auto-scroll.
      * Forwards to GlobeBackground.activePinIndex via LayerManager.currentBackground so the
@@ -111,5 +117,12 @@ Item {
         anchors.bottom: dashboardPanels.top
         anchors.leftMargin: 16
         anchors.bottomMargin: 4
+    }
+
+    // ── Memory browser — right-side slide-in panel ────────────────────────────
+
+    MemoryBrowser {
+        anchors.fill: parent
+        memoryVisible: root.memoryBrowserVisible
     }
 }
