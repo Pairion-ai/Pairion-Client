@@ -83,10 +83,23 @@ struct TextMessage {
     QString text;
 };
 
+/**
+ * @brief Notifies the server that the user has interrupted TTS playback.
+ *
+ * Sent immediately when a confirmed barge-in is detected on the client.
+ * The server uses this to cancel in-flight LLM and TTS generation for the
+ * identified stream. A new AudioStreamStart message follows immediately after.
+ */
+struct BargeIn {
+    static constexpr const char *kType = "BargeIn";
+    /// Stream ID of the TTS audio stream that was interrupted.
+    QString interruptedStreamId;
+};
+
 /// Variant of all outbound text-frame message types.
 using OutboundMessage =
     std::variant<DeviceIdentify, HeartbeatPing, WakeWordDetected, AudioStreamStartIn, SpeechEnded,
-                 AudioStreamEndIn, TextMessage>;
+                 AudioStreamEndIn, TextMessage, BargeIn>;
 
 // ---------------------------------------------------------------------------
 // Inbound messages (Server → Client)

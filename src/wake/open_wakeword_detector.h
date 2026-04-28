@@ -37,6 +37,27 @@ class OpenWakewordDetector : public QObject {
     /// @brief Process a 20 ms PCM frame (640 bytes, 16-bit mono 16 kHz).
     void processPcmFrame(const QByteArray &pcm20ms);
 
+  public:
+    /**
+     * @brief Return the current pre-roll PCM buffer contents.
+     *
+     * The pre-roll buffer holds the most recent ~200 ms of raw PCM audio.
+     * AudioSessionOrchestrator reads this on confirmed barge-in to send
+     * the beginning of the user's interruption to the server.
+     * @return Current pre-roll buffer (may be empty before any audio is processed).
+     */
+    QByteArray preRollBuffer() const { return m_preRollBuffer; }
+
+    /**
+     * @brief Inject pre-roll data directly — test use only.
+     *
+     * Replaces the internal pre-roll buffer with @p data so that unit tests
+     * can exercise the barge-in pre-roll encoding path without running the
+     * full ONNX pipeline.
+     * @param data Raw PCM bytes to install as the pre-roll buffer.
+     */
+    void setPreRollBufferForTest(const QByteArray &data) { m_preRollBuffer = data; }
+
   signals:
     /// @brief Emitted when the wake word is detected above threshold.
     void wakeWordDetected(float score, const QByteArray &preRollBuffer);

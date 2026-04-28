@@ -35,8 +35,14 @@ class AudioSessionOrchestrator : public QObject {
   public:
     /**
      * @brief Pipeline states.
+     *
+     * Idle          — quiescent, no capture or inference active.
+     * AwaitingWake  — listening for the wake word.
+     * Streaming     — user is speaking; audio is being encoded and sent.
+     * EndingSpeech  — reserved for future graceful-close flow.
+     * PlayingBack   — Pairion is speaking; VAD runs at barge-in threshold.
      */
-    enum class State { Idle, AwaitingWake, Streaming, EndingSpeech };
+    enum class State { Idle, AwaitingWake, Streaming, EndingSpeech, PlayingBack };
 
     /**
      * @brief Construct the orchestrator with all pipeline dependencies.
@@ -56,6 +62,15 @@ class AudioSessionOrchestrator : public QObject {
     /// @brief Stop all pipeline activity.
     void shutdown();
 
+    /**
+     * @brief Override the barge-in minimum duration timer interval.
+     *
+     * The default is pairion::kBargeInMinDurationMs (400 ms). Tests set this
+     * to a small value (e.g. 1 ms) to exercise the barge-in path without blocking.
+     * @param ms Duration in milliseconds.
+     */
+    void setBargeInTimerIntervalMs(int ms);
+
   signals:
     /// Emitted when the wake word fires and a new stream starts.
     void wakeFired(const QString &streamId);
@@ -66,6 +81,7 @@ class AudioSessionOrchestrator : public QObject {
 
   private slots:
     void onWakeWordDetected(float score, const QByteArray &preRollBuffer);
+    void onVadSpeechStarted();
     void onSpeechEnded();
     void onOpusFrameEncoded(const QByteArray &opusFrame);
     void onStreamingTimeout();
@@ -73,6 +89,20 @@ class AudioSessionOrchestrator : public QObject {
     void onInboundAudioStreamStart(const QString &streamId);
     void onInboundStreamEnd(const QString &streamId, const QString &reason);
     void onTtsPlaybackStarted();
+    /**
+     * @brief Handles the natural end of TTS playback (speakingStateChanged("idle")).
+     *
+     * Cancels any pending barge-in timer, restores the normal VAD threshold,
+     * resets VAD state, and resumes wake word listening.
+     */
+    void onTtsPlaybackEnded();
+    /**
+     * @brief Called when the barge-in minimum-duration timer expires.
+     *
+     * The user has been speaking for at least kBargeInMinDurationMs — this is
+     * a confirmed barge-in.  Delegates to executeBargeIn().
+     */
+    void onBargeInTimerExpired();
     /**
      * @brief Resets the pipeline to Idle when the WebSocket connection is lost.
      *
@@ -98,6 +128,15 @@ class AudioSessionOrchestrator : public QObject {
   private:
     void transitionTo(State newState);
     void endStream(const QString &reason);
+    /**
+     * @brief Execute a confirmed barge-in: stop playback, send BargeIn, start new stream.
+     *
+     * Called from onBargeInTimerExpired() once the under-breath filter is satisfied.
+     * Stops TTS playback, sends the BargeIn message with the interrupted stream ID,
+     * opens a new AudioStreamStart upload stream, sends pre-roll audio, and transitions
+     * to Streaming so the user's interruption is captured and forwarded to the server.
+     */
+    void executeBargeIn();
 
     pairion::audio::PairionAudioCapture *m_capture;
     pairion::audio::PairionOpusEncoder *m_encoder;
@@ -110,7 +149,15 @@ class AudioSessionOrchestrator : public QObject {
 
     State m_state = State::Idle;
     QString m_activeStreamId;
+    /// Stream ID of the most recent inbound (server→client) audio stream.
+    /// Stored in onInboundAudioStreamStart() and sent in the BargeIn message.
+    QString m_inboundStreamId;
     QTimer m_streamingTimeout;
+    QTimer m_bargeInTimer;
+    /// Barge-in filter duration in ms (default kBargeInMinDurationMs; override via setBargeInTimerIntervalMs()).
+    int m_bargeInTimerIntervalMs;
+    /// Normal VAD threshold stored when entering PlayingBack; restored on exit.
+    double m_normalVadThreshold;
 
     static constexpr int kStreamingTimeoutMs = 30000;
 };

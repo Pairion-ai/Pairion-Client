@@ -41,6 +41,22 @@ class SileroVad : public QObject {
     void processPcmFrame(const QByteArray &pcm20ms);
     void reset();
 
+    /**
+     * @brief Switch the speech probability threshold at runtime.
+     *
+     * Used by AudioSessionOrchestrator to raise the threshold during TTS playback
+     * (barge-in mode) and restore it when playback ends.  Caller is responsible
+     * for calling reset() if the VAD state machine should be cleared simultaneously.
+     * @param threshold Speech probability [0, 1] above which speech is considered active.
+     */
+    void setThreshold(double threshold);
+
+    /**
+     * @brief Return the current speech probability threshold.
+     * @return Current threshold value.
+     */
+    double threshold() const;
+
   signals:
     void speechStarted();
     void speechEnded();

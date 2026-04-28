@@ -108,6 +108,27 @@ class TestMessageCodec : public QObject {
         QCOMPARE(obj["text"].toString(), QStringLiteral("Hello Pairion"));
     }
 
+    /// Verify BargeIn serializes type and interruptedStreamId.
+    void serializeBargeIn() {
+        BargeIn msg;
+        msg.interruptedStreamId = QStringLiteral("out-stream-42");
+
+        QJsonObject obj = EnvelopeCodec::serialize(msg);
+        QCOMPARE(obj["type"].toString(), QStringLiteral("BargeIn"));
+        QCOMPARE(obj["interruptedStreamId"].toString(), QStringLiteral("out-stream-42"));
+    }
+
+    /// Verify BargeIn with empty interruptedStreamId still serializes the field.
+    void serializeBargeInEmptyStreamId() {
+        BargeIn msg;
+        msg.interruptedStreamId = QStringLiteral("");
+
+        QJsonObject obj = EnvelopeCodec::serialize(msg);
+        QCOMPARE(obj["type"].toString(), QStringLiteral("BargeIn"));
+        QVERIFY(obj.contains(QStringLiteral("interruptedStreamId")));
+        QCOMPARE(obj["interruptedStreamId"].toString(), QStringLiteral(""));
+    }
+
     /// Verify serializeToString produces valid compact JSON.
     void serializeToStringProducesValidJson() {
         HeartbeatPing ping;
@@ -187,6 +208,20 @@ class TestMessageCodec : public QObject {
         auto *msg = std::get_if<AgentStateChange>(&result.value());
         QVERIFY(msg != nullptr);
         QCOMPARE(msg->state, QStringLiteral("thinking"));
+    }
+
+    /// Verify AgentStateChange with "INTERRUPTED" state passes through as a plain string.
+    /// The state field is stringly typed so no enum change is needed for new server states.
+    void deserializeAgentStateChangeInterrupted() {
+        QJsonObject obj;
+        obj["type"] = QStringLiteral("AgentStateChange");
+        obj["state"] = QStringLiteral("INTERRUPTED");
+
+        auto result = EnvelopeCodec::deserialize(obj);
+        QVERIFY(result.has_value());
+        auto *msg = std::get_if<AgentStateChange>(&result.value());
+        QVERIFY(msg != nullptr);
+        QCOMPARE(msg->state, QStringLiteral("INTERRUPTED"));
     }
 
     /// Verify TranscriptPartial deserializes correctly.

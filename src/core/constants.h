@@ -50,4 +50,13 @@ inline constexpr int kStreamingTimeoutMs = 30000;
 /// False-wake suppression window in milliseconds.
 inline constexpr int kWakeSuppressionMs = 500;
 
+/// VAD speech probability threshold during TTS playback for barge-in detection.
+/// Higher than the normal threshold to reject Pairion's own speaker output from
+/// triggering a false barge-in (acoustic echo mitigation without AEC).
+inline constexpr double kBargeInVadThreshold = 0.7;
+
+/// Minimum sustained speech duration (ms) required to confirm a barge-in.
+/// Short sounds (coughs, "uh huh") below this window are filtered and ignored.
+inline constexpr int kBargeInMinDurationMs = 400;
+
 } // namespace pairion

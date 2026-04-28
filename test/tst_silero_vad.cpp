@@ -129,6 +129,49 @@ class TestSileroVad : public QObject {
         QCOMPARE(startSpy.count(), 2);
     }
 
+    /// Verify setThreshold changes the detection threshold at runtime.
+    void setThresholdChangesDetectionLevel() {
+        MockOnnxSession session;
+        // Probability = 0.6: above 0.5 (original), below 0.8 (new threshold)
+        session.enqueueOutput(vadOutput(0.6f));
+
+        SileroVad vad(&session, 0.5, 800);
+        QCOMPARE(vad.threshold(), 0.5);
+
+        // Raise threshold: now 0.6 is below threshold — no speech detected
+        vad.setThreshold(0.8);
+        QCOMPARE(vad.threshold(), 0.8);
+
+        QSignalSpy startSpy(&vad, &SileroVad::speechStarted);
+        vad.processPcmFrame(QByteArray(640, '\0'));
+        vad.processPcmFrame(QByteArray(640, '\0'));
+
+        QCOMPARE(startSpy.count(), 0); // 0.6 < 0.8 → no speech
+    }
+
+    /// Verify threshold getter returns constructor value.
+    void thresholdGetterReturnsConstructorValue() {
+        MockOnnxSession session;
+        SileroVad vad(&session, 0.35, 800);
+        QCOMPARE(vad.threshold(), 0.35);
+    }
+
+    /// Verify setThreshold to lower value detects speech that was previously below threshold.
+    void setThresholdLowerDetectsMoreSpeech() {
+        MockOnnxSession session;
+        session.enqueueOutput(vadOutput(0.4f)); // probability 0.4
+
+        SileroVad vad(&session, 0.5, 800); // 0.4 < 0.5 initially → no speech
+        vad.setThreshold(0.3);             // lower to 0.3 → 0.4 > 0.3 → speech
+        QCOMPARE(vad.threshold(), 0.3);
+
+        QSignalSpy startSpy(&vad, &SileroVad::speechStarted);
+        vad.processPcmFrame(QByteArray(640, '\0'));
+        vad.processPcmFrame(QByteArray(640, '\0'));
+
+        QCOMPARE(startSpy.count(), 1);
+    }
+
     /// Verify h and c state is updated between inferences.
     void recurrentStateUpdated() {
         MockOnnxSession session;

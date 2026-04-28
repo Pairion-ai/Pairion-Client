@@ -6,6 +6,7 @@
 #include "audio_session_orchestrator.h"
 
 #include "../audio/pairion_opus_encoder.h"
+#include "../core/constants.h"
 #include "../protocol/binary_codec.h"
 #include "../protocol/envelope_codec.h"
 
@@ -24,10 +25,14 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
     pairion::audio::PairionAudioPlayback *playback, QObject *parent)
     : QObject(parent), m_capture(capture), m_encoder(encoder),
       m_preRollEncoder(new pairion::audio::PairionOpusEncoder(this)), m_playback(playback),
-      m_wakeDetector(wakeDetector), m_vad(vad), m_wsClient(wsClient), m_connState(connState) {
+      m_wakeDetector(wakeDetector), m_vad(vad), m_wsClient(wsClient), m_connState(connState),
+      m_bargeInTimerIntervalMs(pairion::kBargeInMinDurationMs),
+      m_normalVadThreshold(vad->threshold()) {
 
     connect(m_wakeDetector, &pairion::wake::OpenWakewordDetector::wakeWordDetected, this,
             &AudioSessionOrchestrator::onWakeWordDetected);
+    connect(m_vad, &pairion::vad::SileroVad::speechStarted, this,
+            &AudioSessionOrchestrator::onVadSpeechStarted);
     connect(m_vad, &pairion::vad::SileroVad::speechEnded, this,
             &AudioSessionOrchestrator::onSpeechEnded);
     connect(m_encoder, &pairion::audio::PairionOpusEncoder::opusFrameEncoded, this,
@@ -39,6 +44,8 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
                 [this](const QString &state) {
                     if (state == QLatin1String("speaking")) {
                         onTtsPlaybackStarted();
+                    } else if (state == QLatin1String("idle")) {
+                        onTtsPlaybackEnded();
                     }
                 });
     }
@@ -46,6 +53,11 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
     m_streamingTimeout.setSingleShot(true);
     connect(&m_streamingTimeout, &QTimer::timeout, this,
             &AudioSessionOrchestrator::onStreamingTimeout);
+
+    m_bargeInTimer.setSingleShot(true);
+    connect(&m_bargeInTimer, &QTimer::timeout, this,
+            &AudioSessionOrchestrator::onBargeInTimerExpired);
+
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::binaryFrameReceived, this,
             &AudioSessionOrchestrator::onInboundAudio);
     connect(m_wsClient, &pairion::ws::PairionWebSocketClient::audioStreamStartOutReceived, this,
@@ -68,6 +80,10 @@ AudioSessionOrchestrator::AudioSessionOrchestrator(
 
 AudioSessionOrchestrator::State AudioSessionOrchestrator::state() const {
     return m_state;
+}
+
+void AudioSessionOrchestrator::setBargeInTimerIntervalMs(int ms) {
+    m_bargeInTimerIntervalMs = ms;
 }
 
 void AudioSessionOrchestrator::startListening() {
@@ -138,11 +154,25 @@ void AudioSessionOrchestrator::onWakeWordDetected(float score, const QByteArray 
     emit wakeFired(m_activeStreamId);
 }
 
-void AudioSessionOrchestrator::onSpeechEnded() {
-    if (m_state != State::Streaming) {
+void AudioSessionOrchestrator::onVadSpeechStarted() {
+    if (m_state != State::PlayingBack) {
         return;
     }
-    endStream(QStringLiteral("normal"));
+    qCDebug(lcPipeline) << "Speech detected during playback — starting barge-in filter timer ("
+                        << m_bargeInTimerIntervalMs << "ms)";
+    m_bargeInTimer.start(m_bargeInTimerIntervalMs);
+}
+
+void AudioSessionOrchestrator::onSpeechEnded() {
+    if (m_state == State::Streaming) {
+        endStream(QStringLiteral("normal"));
+    } else if (m_state == State::PlayingBack) {
+        if (m_bargeInTimer.isActive()) {
+            m_bargeInTimer.stop();
+            qCDebug(lcPipeline)
+                << "Short utterance during playback filtered (under-breath ack)";
+        }
+    }
 }
 
 void AudioSessionOrchestrator::onOpusFrameEncoded(const QByteArray &opusFrame) {
@@ -193,20 +223,112 @@ void AudioSessionOrchestrator::transitionTo(State newState) {
         return;
     }
 
-    static constexpr const char *kStateNames[] = {"idle", "awaiting_wake", "streaming",
-                                                  "ending_speech"};
+    static constexpr const char *kStateNames[] = {
+        "idle", "awaiting_wake", "streaming", "ending_speech", "playing_back"};
     m_state = newState;
     m_connState->setVoiceState(QString::fromUtf8(kStateNames[static_cast<int>(newState)]));
 }
 
 void AudioSessionOrchestrator::onTtsPlaybackStarted() {
-    if (m_state != State::Streaming) {
+    if (m_state == State::Streaming) {
+        // End the upload stream without auto-restarting wake word listening.
+        // We go to PlayingBack instead of Idle → AwaitingWake.
+        m_streamingTimeout.stop();
+        protocol::SpeechEnded speechEndMsg;
+        speechEndMsg.streamId = m_activeStreamId;
+        m_wsClient->sendMessage(speechEndMsg);
+        protocol::AudioStreamEndIn endMsg;
+        endMsg.streamId = m_activeStreamId;
+        endMsg.reason = QStringLiteral("normal");
+        m_wsClient->sendMessage(endMsg);
+        qCInfo(lcPipeline) << "TTS started while streaming — stream ended:" << m_activeStreamId;
+        QString streamId = m_activeStreamId;
+        m_activeStreamId.clear();
+        transitionTo(State::PlayingBack);
+        emit streamEnded(streamId);
+    } else if (m_state == State::AwaitingWake) {
+        // TTS started while waiting for wake (e.g., proactive/follow-up response).
+        transitionTo(State::PlayingBack);
+    } else if (m_state == State::PlayingBack) {
+        // Another TTS burst during playback — reset barge-in state.
+        m_bargeInTimer.stop();
+    } else {
         return;
     }
-    // LCOV_EXCL_START — TTS playback while upload streaming requires a live audio pipeline; not exercisable in unit tests
-    qCInfo(lcPipeline) << "TTS playback started — ending upload stream to prevent mic loopback";
-    endStream(QStringLiteral("normal"));
-    // LCOV_EXCL_STOP
+    // Store current normal threshold, raise to barge-in level, reset VAD state.
+    m_normalVadThreshold = m_vad->threshold();
+    m_vad->reset();
+    m_vad->setThreshold(pairion::kBargeInVadThreshold);
+    qCInfo(lcPipeline) << "PlayingBack: VAD threshold raised to" << pairion::kBargeInVadThreshold
+                       << "(echo mitigation)";
+}
+
+void AudioSessionOrchestrator::onTtsPlaybackEnded() {
+    if (m_state != State::PlayingBack) {
+        return;
+    }
+    m_bargeInTimer.stop();
+    m_vad->setThreshold(m_normalVadThreshold);
+    m_vad->reset();
+    qCInfo(lcPipeline) << "TTS playback ended — resuming wake word listening";
+    transitionTo(State::Idle);
+    startListening();
+}
+
+void AudioSessionOrchestrator::onBargeInTimerExpired() {
+    if (m_state != State::PlayingBack) {
+        return;
+    }
+    qCInfo(lcPipeline) << "Barge-in timer expired — confirmed barge-in";
+    executeBargeIn();
+}
+
+void AudioSessionOrchestrator::executeBargeIn() {
+    qCInfo(lcPipeline) << "Executing barge-in: stopping playback, sending BargeIn message";
+
+    // 1. Stop TTS playback immediately.
+    if (m_playback)
+        m_playback->stop();
+
+    // 2. Restore normal VAD threshold before entering Streaming.
+    m_vad->setThreshold(m_normalVadThreshold);
+
+    // 3. Send BargeIn message — tells the server to cancel in-flight LLM/TTS.
+    protocol::BargeIn bargeInMsg;
+    bargeInMsg.interruptedStreamId = m_inboundStreamId;
+    m_wsClient->sendMessage(bargeInMsg);
+
+    // 4. Open a new user audio upload stream.
+    m_activeStreamId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    protocol::AudioStreamStartIn startMsg;
+    startMsg.streamId = m_activeStreamId;
+    m_wsClient->sendMessage(startMsg);
+
+    // 5. Send pre-roll audio from the wake detector's ring buffer so the
+    //    server receives the beginning of the user's interruption.
+    constexpr int kFrameBytes = 640;
+    QByteArray preRoll = m_wakeDetector->preRollBuffer();
+    auto preRollConn = QObject::connect(
+        m_preRollEncoder, &pairion::audio::PairionOpusEncoder::opusFrameEncoded, this,
+        [this](const QByteArray &encoded) {
+            m_wsClient->sendBinaryFrame(
+                protocol::BinaryCodec::encodeBinaryFrame(m_activeStreamId, encoded));
+        },
+        Qt::DirectConnection);
+    for (int offset = 0; offset + kFrameBytes <= preRoll.size(); offset += kFrameBytes) {
+        m_preRollEncoder->encodePcmFrame(preRoll.mid(offset, kFrameBytes));
+    }
+    QObject::disconnect(preRollConn);
+
+    // 6. Reset VAD for the fresh speech segment.
+    m_vad->reset();
+
+    // 7. Transition to Streaming.
+    transitionTo(State::Streaming);
+    m_streamingTimeout.start(kStreamingTimeoutMs);
+
+    emit wakeFired(m_activeStreamId);
+    qCInfo(lcPipeline) << "Barge-in stream started:" << m_activeStreamId;
 }
 
 void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {
@@ -220,6 +342,8 @@ void AudioSessionOrchestrator::onInboundAudio(const QByteArray &binaryFrame) {
 
 void AudioSessionOrchestrator::onInboundAudioStreamStart(const QString &streamId) {
     qCInfo(lcPipeline) << "Inbound audio stream started:" << streamId;
+    // Store the stream ID so a subsequent BargeIn message can reference it.
+    m_inboundStreamId = streamId;
     if (m_playback)
         m_playback->preparePlayback();
 }

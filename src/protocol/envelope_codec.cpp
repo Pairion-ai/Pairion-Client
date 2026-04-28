@@ -45,6 +45,9 @@ QJsonObject EnvelopeCodec::serialize(const OutboundMessage &msg) {
             } else if constexpr (std::is_same_v<T, TextMessage>) {
                 return {{QStringLiteral("type"), QString::fromUtf8(T::kType)},
                         {QStringLiteral("text"), m.text}};
+            } else if constexpr (std::is_same_v<T, BargeIn>) {
+                return {{QStringLiteral("type"), QString::fromUtf8(T::kType)},
+                        {QStringLiteral("interruptedStreamId"), m.interruptedStreamId}};
             }
         },
         msg);

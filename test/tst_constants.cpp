@@ -25,6 +25,18 @@ class TestConstants : public QObject {
 
     /// kWakeSuppressionMs (correct spelling) is positive.
     void wakeSuppressionMsIsPositive() { QVERIFY(pairion::kWakeSuppressionMs > 0); }
+
+    /// kBargeInVadThreshold must be strictly higher than the default normal VAD threshold (0.5).
+    void bargeInVadThresholdIsHigherThanDefault() {
+        QVERIFY(pairion::kBargeInVadThreshold > 0.5);
+        QVERIFY(pairion::kBargeInVadThreshold <= 1.0);
+    }
+
+    /// kBargeInMinDurationMs must be a positive, reasonable duration.
+    void bargeInMinDurationMsIsPositive() {
+        QVERIFY(pairion::kBargeInMinDurationMs > 0);
+        QVERIFY(pairion::kBargeInMinDurationMs < 2000); // sanity: under 2 seconds
+    }
 };
 
 QTEST_GUILESS_MAIN(TestConstants)

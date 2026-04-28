@@ -48,6 +48,15 @@ void SileroVad::reset() {
     qCInfo(lcVad) << "VAD state reset";
 }
 
+void SileroVad::setThreshold(double threshold) {
+    m_threshold = threshold;
+    qCInfo(lcVad) << "VAD threshold set to" << m_threshold;
+}
+
+double SileroVad::threshold() const {
+    return m_threshold;
+}
+
 void SileroVad::runInference(const std::vector<float> &samples) {
     // Build inputs matching Silero VAD v5 signature
     pairion::core::OnnxTensor audioInput{"input", samples, {}, {1, kInferenceSamples}};
